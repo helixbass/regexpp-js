@@ -2,6 +2,20 @@ use serde::Deserialize;
 
 use crate::{EcmaVersion, RegExpSyntaxError};
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum RegExpValidatorSourceContextKind {
+    Flags,
+    Literal,
+    Pattern,
+}
+
+struct RegExpValidatorSourceContext<'a> {
+    source: &'a str,
+    start: usize,
+    end: usize,
+    kind: RegExpValidatorSourceContextKind,
+}
+
 pub struct RegExpFlags {
     global: bool,
     ignore_case: bool,
@@ -54,6 +68,7 @@ pub enum CapturingGroupKey<'a> {
     Name(&'a str),
 }
 
+#[derive(Default)]
 pub struct Options {
     strict: Option<bool>,
     ecma_version: Option<EcmaVersion>,
@@ -84,7 +99,8 @@ pub struct Options {
     on_backreference: Option<Box<dyn FnMut(usize, usize, CapturingGroupKey)>>,
     on_character_class_enter: Option<Box<dyn FnMut(usize, bool, bool)>>,
     on_character_class_leave: Option<Box<dyn FnMut(usize, usize, bool)>>,
-    on_character_class_range: Option<Box<dyn FnMut(usize, usize, UnicodeCodePoint, UnicodeCodePoint)>>,
+    on_character_class_range:
+        Option<Box<dyn FnMut(usize, usize, UnicodeCodePoint, UnicodeCodePoint)>>,
     on_class_intersection: Option<Box<dyn FnMut(usize, usize)>>,
     on_class_subtraction: Option<Box<dyn FnMut(usize, usize)>>,
     on_class_string_disjunction_enter: Option<Box<dyn FnMut(usize)>>,
@@ -100,18 +116,42 @@ pub struct ValidatePatternFlags {
     unicode_sets: Option<bool>,
 }
 
-pub struct RegExpValidator;
+pub struct RegExpValidator<'a> {
+    _options: Options,
+    _src_ctx: Option<RegExpValidatorSourceContext<'a>>,
+}
 
-impl RegExpValidator {
+impl<'a> RegExpValidator<'a> {
     pub fn new(options: Option<Options>) -> Self {
-        unimplemented!()
+        Self {
+            _options: options.unwrap_or_default(),
+            _src_ctx: Default::default(),
+        }
     }
 
     pub fn validate_pattern(
         &mut self,
-        source: &str,
+        source: &'a str,
         start: Option<usize>,
         end: Option<usize>,
+        flags: Option<ValidatePatternFlags>,
+    ) -> Result<(), RegExpSyntaxError> {
+        let start = start.unwrap_or(0);
+        let end = end.unwrap_or(source.len());
+        self._src_ctx = Some(RegExpValidatorSourceContext {
+            source,
+            start,
+            end,
+            kind: RegExpValidatorSourceContextKind::Pattern,
+        });
+        self.validate_pattern_internal(source, start, end, flags)
+    }
+
+    fn validate_pattern_internal(
+        &mut self,
+        source: &str,
+        start: usize,
+        end: usize,
         flags: Option<ValidatePatternFlags>,
     ) -> Result<(), RegExpSyntaxError> {
         unimplemented!()
@@ -125,7 +165,7 @@ mod tests {
 
     use super::*;
 
-    fn validator() -> RegExpValidator {
+    fn validator<'a>() -> RegExpValidator<'a> {
         RegExpValidator::new(None)
     }
 
@@ -135,12 +175,9 @@ mod tests {
         end: usize,
         flags: ValidatePatternFlags,
     ) -> RegExpSyntaxError {
-        validator().validate_pattern(
-            source,
-            Some(start),
-            Some(end),
-            Some(flags),
-        ).expect_err("Should fail, but succeeded.")
+        validator()
+            .validate_pattern(source, Some(start), Some(end), Some(flags))
+            .expect_err("Should fail, but succeeded.")
     }
 
     #[test]
@@ -199,15 +236,11 @@ mod tests {
                     "index": 6,
                 },
             },
-        ])).unwrap();
+        ]))
+        .unwrap();
 
         for test in cases {
-            let error = get_error_for_pattern(
-                &test.source,
-                test.start,
-                test.end,
-                test.flags,
-            );
+            let error = get_error_for_pattern(&test.source, test.start, test.end, test.flags);
 
             assert_that!(&error).is_equal_to(&test.error);
         }
