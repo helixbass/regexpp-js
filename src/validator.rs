@@ -1,4 +1,6 @@
-use crate::EcmaVersion;
+use serde::Deserialize;
+
+use crate::{EcmaVersion, RegExpSyntaxError};
 
 pub struct RegExpFlags {
     global: bool,
@@ -91,10 +93,92 @@ pub struct Options {
     on_string_alternative_leave: Option<Box<dyn FnMut(usize, usize, usize)>>,
 }
 
+#[derive(Default, Deserialize)]
+#[serde(default)]
+pub struct ValidatePatternFlags {
+    unicode: Option<bool>,
+    unicode_sets: Option<bool>,
+}
+
 pub struct RegExpValidator;
 
 impl RegExpValidator {
     pub fn new(options: Options) -> Self {
         unimplemented!()
+    }
+
+    pub fn validate_pattern(
+        source: &str,
+        start: Option<usize>,
+        end: Option<usize>,
+        flags: Option<ValidatePatternFlags>,
+    ) -> Result<(), RegExpSyntaxError> {
+        unimplemented!()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn test_validate_pattern_should_throw_syntax_error() {
+        #[derive(Deserialize)]
+        struct Case {
+            source: String,
+            start: usize,
+            end: usize,
+            flags: ValidatePatternFlags,
+            error: RegExpSyntaxError,
+        }
+
+        let cases: Vec<Case> = serde_json::from_value(json!([
+            {
+                "source": "abcd",
+                "start": 0,
+                "end": 2,
+                "flags": { "unicode": true, "unicodeSets": true },
+                "error": {
+                    "message":
+                        "Invalid regular expression: /ab/uv: Invalid regular expression flags",
+                    "index": 3,
+                },
+            },
+            {
+                "source": "[A]",
+                "start": 0,
+                "end": 2,
+                "flags": { "unicode": true, "unicodeSets": false },
+                "error": {
+                    "message":
+                        "Invalid regular expression: /[A/u: Unterminated character class",
+                    "index": 2,
+                },
+            },
+            {
+                "source": "[[A]]",
+                "start": 0,
+                "end": 4,
+                "flags": { "unicode": false, "unicodeSets": true },
+                "error": {
+                    "message":
+                        "Invalid regular expression: /[[A]/v: Unterminated character class",
+                    "index": 4,
+                },
+            },
+            {
+                "source": " /[[A]/v ",
+                "start": 2,
+                "end": 6,
+                "flags": { "unicode": false, "unicodeSets": true },
+                "error": {
+                    "message":
+                        "Invalid regular expression: /[[A]/v: Unterminated character class",
+                    "index": 6,
+                },
+            },
+        ])).unwrap();
     }
 }
