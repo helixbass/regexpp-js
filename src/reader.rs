@@ -2,6 +2,10 @@
 pub struct Reader;
 
 impl Reader {
+    pub fn index(&self) -> usize {
+        unimplemented!()
+    }
+
     pub fn reset(
         &mut self,
         source: &str,

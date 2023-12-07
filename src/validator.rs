@@ -2,31 +2,31 @@ use std::collections::HashSet;
 
 use serde::Deserialize;
 
-use crate::{EcmaVersion, RegExpSyntaxError, Reader, ecma_versions::LATEST_ECMA_VERSION};
+use crate::{EcmaVersion, RegExpSyntaxError, Reader, ecma_versions::LATEST_ECMA_VERSION, regexp_syntax_error::{new_reg_exp_syntax_error, self}};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-enum RegExpValidatorSourceContextKind {
+pub enum RegExpValidatorSourceContextKind {
     Flags,
     Literal,
     Pattern,
 }
 
-struct RegExpValidatorSourceContext<'a> {
-    source: &'a str,
-    start: usize,
-    end: usize,
-    kind: RegExpValidatorSourceContextKind,
+pub struct RegExpValidatorSourceContext<'a> {
+    pub source: &'a str,
+    pub start: usize,
+    pub end: usize,
+    pub kind: RegExpValidatorSourceContextKind,
 }
 
 pub struct RegExpFlags {
-    global: bool,
-    ignore_case: bool,
-    multiline: bool,
-    unicode: bool,
-    sticky: bool,
-    dot_all: bool,
-    has_indices: bool,
-    unicode_sets: bool,
+    pub global: bool,
+    pub ignore_case: bool,
+    pub multiline: bool,
+    pub unicode: bool,
+    pub sticky: bool,
+    pub dot_all: bool,
+    pub has_indices: bool,
+    pub unicode_sets: bool,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -244,6 +244,12 @@ impl<'a> RegExpValidator<'a> {
         })
     }
 
+    fn index(
+        &self,
+    ) -> usize {
+        self._reader.index()
+    }
+
     fn reset(
         &mut self,
         source: &str,
@@ -262,10 +268,18 @@ impl<'a> RegExpValidator<'a> {
 
     fn raise(
         &self,
-        message: impl Into<String>,
+        message: &str,
         context: Option<RaiseContext>,
     ) -> Result<(), RegExpSyntaxError> {
-        unimplemented!()
+        Err(new_reg_exp_syntax_error(
+            self._src_ctx.as_ref().unwrap(),
+            regexp_syntax_error::Flags {
+                unicode: context.and_then(|context| context.unicode).unwrap_or(self._unicode_mode && !self._unicode_sets_mode),
+                unicode_sets: context.and_then(|context| context.unicode_sets).unwrap_or(self._unicode_sets_mode),
+            },
+            context.and_then(|context| context.index).unwrap_or(self.index()),
+            message,
+        ))
     }
 
     fn consume_pattern(
