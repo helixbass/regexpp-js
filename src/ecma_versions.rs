@@ -1,3 +1,4 @@
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum EcmaVersion {
     _5,
     _2015,

@@ -1,6 +1,8 @@
+use std::collections::HashSet;
+
 use serde::Deserialize;
 
-use crate::{EcmaVersion, RegExpSyntaxError};
+use crate::{EcmaVersion, RegExpSyntaxError, Reader, ecma_versions::LATEST_ECMA_VERSION};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 enum RegExpValidatorSourceContextKind {
@@ -116,8 +118,19 @@ pub struct ValidatePatternFlags {
     unicode_sets: Option<bool>,
 }
 
+struct Mode {
+    unicode_mode: bool,
+    n_flag: bool,
+    unicode_sets_mode: bool,
+}
+
 pub struct RegExpValidator<'a> {
     _options: Options,
+    _reader: Reader,
+    _unicode_mode: bool,
+    _unicode_sets_mode: bool,
+    _n_flag: bool,
+    _group_names: HashSet<String>,
     _src_ctx: Option<RegExpValidatorSourceContext<'a>>,
 }
 
@@ -125,6 +138,11 @@ impl<'a> RegExpValidator<'a> {
     pub fn new(options: Option<Options>) -> Self {
         Self {
             _options: options.unwrap_or_default(),
+            _reader: Default::default(),
+            _unicode_mode: Default::default(),
+            _unicode_sets_mode: Default::default(),
+            _n_flag: Default::default(),
+            _group_names: Default::default(),
             _src_ctx: Default::default(),
         }
     }
@@ -154,6 +172,60 @@ impl<'a> RegExpValidator<'a> {
         end: usize,
         flags: Option<ValidatePatternFlags>,
     ) -> Result<(), RegExpSyntaxError> {
+        let mode = self._parse_flags_option_to_mode(
+            flags,
+            end,
+        );
+
+        self._unicode_mode = mode.unicode_mode;
+        self._n_flag = mode.n_flag;
+        self._unicode_sets_mode = mode.unicode_sets_mode;
+        self.reset(source, start, end);
+        self.consume_pattern();
+
+        if !self._n_flag &&
+            self.ecma_version() >= EcmaVersion::_2018 &&
+            !self._group_names.is_empty() {
+            self._n_flag = true;
+            self.rewind(start);
+        }
+
+        Ok(())
+    }
+
+    fn ecma_version(
+        &self,
+    ) -> EcmaVersion {
+        self._options.ecma_version.unwrap_or(LATEST_ECMA_VERSION)
+    }
+
+    fn _parse_flags_option_to_mode(
+        &self,
+        flags: Option<ValidatePatternFlags>,
+        source_end: usize,
+    ) -> Mode {
+        unimplemented!()
+    }
+
+    fn reset(
+        &mut self,
+        source: &str,
+        start: usize,
+        end: usize,
+    ) {
+        self._reader.reset(source, start, end, self._unicode_mode);
+    }
+
+    fn rewind(
+        &mut self,
+        index: usize,
+    ) {
+        self._reader.rewind(index);
+    }
+
+    fn consume_pattern(
+        &self,
+    ) {
         unimplemented!()
     }
 }
