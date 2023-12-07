@@ -103,11 +103,12 @@ pub struct ValidatePatternFlags {
 pub struct RegExpValidator;
 
 impl RegExpValidator {
-    pub fn new(options: Options) -> Self {
+    pub fn new(options: Option<Options>) -> Self {
         unimplemented!()
     }
 
     pub fn validate_pattern(
+        &mut self,
         source: &str,
         start: Option<usize>,
         end: Option<usize>,
@@ -120,8 +121,27 @@ impl RegExpValidator {
 #[cfg(test)]
 mod tests {
     use serde_json::json;
+    use speculoos::prelude::*;
 
     use super::*;
+
+    fn validator() -> RegExpValidator {
+        RegExpValidator::new(None)
+    }
+
+    fn get_error_for_pattern(
+        source: &str,
+        start: usize,
+        end: usize,
+        flags: ValidatePatternFlags,
+    ) -> RegExpSyntaxError {
+        validator().validate_pattern(
+            source,
+            Some(start),
+            Some(end),
+            Some(flags),
+        ).expect_err("Should fail, but succeeded.")
+    }
 
     #[test]
     fn test_validate_pattern_should_throw_syntax_error() {
@@ -180,5 +200,16 @@ mod tests {
                 },
             },
         ])).unwrap();
+
+        for test in cases {
+            let error = get_error_for_pattern(
+                &test.source,
+                test.start,
+                test.end,
+                test.flags,
+            );
+
+            assert_that!(&error).is_equal_to(&test.error);
+        }
     }
 }
