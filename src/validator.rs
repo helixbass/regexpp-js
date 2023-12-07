@@ -112,7 +112,7 @@ pub struct Options {
 }
 
 #[derive(Default, Deserialize)]
-#[serde(default)]
+#[serde(default, rename_all = "camelCase")]
 pub struct ValidatePatternFlags {
     unicode: Option<bool>,
     unicode_sets: Option<bool>,
@@ -122,6 +122,13 @@ struct Mode {
     unicode_mode: bool,
     n_flag: bool,
     unicode_sets_mode: bool,
+}
+
+#[derive(Copy, Clone, Default)]
+struct RaiseContext {
+    index: Option<usize>,
+    unicode: Option<bool>,
+    unicode_sets: Option<bool>,
 }
 
 pub struct RegExpValidator<'a> {
@@ -175,7 +182,7 @@ impl<'a> RegExpValidator<'a> {
         let mode = self._parse_flags_option_to_mode(
             flags,
             end,
-        );
+        )?;
 
         self._unicode_mode = mode.unicode_mode;
         self._n_flag = mode.n_flag;
@@ -203,8 +210,38 @@ impl<'a> RegExpValidator<'a> {
         &self,
         flags: Option<ValidatePatternFlags>,
         source_end: usize,
-    ) -> Mode {
-        unimplemented!()
+    ) -> Result<Mode, RegExpSyntaxError> {
+        let mut unicode = false;
+        let mut unicode_sets = false;
+        if let Some(flags) = flags.filter(|_| self.ecma_version() >= EcmaVersion::_2015) {
+            unicode = flags.unicode == Some(true);
+            if self.ecma_version() >= EcmaVersion::_2024 {
+                unicode_sets = flags.unicode_sets == Some(true);
+            }
+        }
+
+        if unicode && unicode_sets {
+            self.raise(
+                "Invalid regular expression flags",
+                Some(RaiseContext {
+                    index: Some(source_end + 1),
+                    unicode: Some(unicode),
+                    unicode_sets: Some(unicode_sets),
+                })
+            )?;
+        }
+
+        let unicode_mode = unicode || unicode_sets;
+        let n_flag = unicode && self.ecma_version() >= EcmaVersion::_2018 ||
+            unicode_sets ||
+            self._options.strict == Some(true) && self.ecma_version() >= EcmaVersion::_2023;
+        let unicode_sets_mode = unicode_sets;
+
+        Ok(Mode {
+            unicode_mode,
+            n_flag,
+            unicode_sets_mode
+        })
     }
 
     fn reset(
@@ -221,6 +258,14 @@ impl<'a> RegExpValidator<'a> {
         index: usize,
     ) {
         self._reader.rewind(index);
+    }
+
+    fn raise(
+        &self,
+        message: impl Into<String>,
+        context: Option<RaiseContext>,
+    ) -> Result<(), RegExpSyntaxError> {
+        unimplemented!()
     }
 
     fn consume_pattern(
