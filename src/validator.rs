@@ -890,8 +890,8 @@ impl<'a> RegExpValidator<'a> {
         let mut may_contain_strings = Some(false);
         let mut result: Option<UnicodeSetsConsumeResult> = Default::default();
         if self.consume_class_set_character() {
-            if self.consume_class_set_range_from_operator(start) {
-                self.consume_class_union_right(Default::default());
+            if self.consume_class_set_range_from_operator(start)? {
+                self.consume_class_union_right(Default::default())?;
                 return Ok(Default::default());
             }
             may_contain_strings = Some(false);
@@ -946,20 +946,58 @@ impl<'a> RegExpValidator<'a> {
             }
             self.raise("Invalid character in character class", None)?;
         }
-        Ok(self.consume_class_union_right(UnicodeSetsConsumeResult {
+        self.consume_class_union_right(UnicodeSetsConsumeResult {
             may_contain_strings,
-        }))
+        })
     }
 
     fn consume_class_union_right(
-        &self,
+        &mut self,
         left_result: UnicodeSetsConsumeResult,
-    ) -> UnicodeSetsConsumeResult {
-        unimplemented!()
+    ) -> Result<UnicodeSetsConsumeResult, RegExpSyntaxError> {
+        let mut may_contain_strings = left_result.may_contain_strings;
+        loop {
+            let start = self.index();
+            if self.consume_class_set_character() {
+                self.consume_class_set_range_from_operator(start)?;
+                continue;
+            }
+            let result = self.consume_class_set_operand()?;
+            if let Some(result) = result {
+                if result.may_contain_strings == Some(true) {
+                    may_contain_strings = Some(true);
+                }
+                continue;
+            }
+            break;
+        }
+
+        Ok(UnicodeSetsConsumeResult {
+            may_contain_strings
+        })
     }
 
-    fn consume_class_set_range_from_operator(&self, start: usize) -> bool {
-        unimplemented!()
+    fn consume_class_set_range_from_operator(&mut self, start: usize) -> Result<bool, RegExpSyntaxError> {
+        let current_start = self.index();
+        let min = self._last_int_value;
+        if self.eat(HYPHEN_MINUS) {
+            if self.consume_class_set_character() {
+                let max = self._last_int_value;
+
+                if min.is_none() || max.is_none() {
+                    self.raise("Invalid character class", None)?;
+                }
+                let min = min.unwrap();
+                let max = max.unwrap();
+                if min > max {
+                    self.raise("Range out of order in character class", None)?;
+                }
+                self.on_character_class_range(start, self.index(), min, max);
+                return Ok(true);
+            }
+            self.rewind(current_start);
+        }
+        Ok(false)
     }
 
     fn consume_class_set_operand(&mut self) -> Result<Option<UnicodeSetsConsumeResult>, RegExpSyntaxError> {
