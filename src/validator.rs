@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use once_cell::sync::Lazy;
 use serde::Deserialize;
 
 use crate::{
@@ -9,10 +10,33 @@ use crate::{
     unicode::{
         EQUALS_SIGN, EXCLAMATION_MARK, LEFT_CURLY_BRACKET, LEFT_PARENTHESIS, LEFT_SQUARE_BRACKET,
         LESS_THAN_SIGN, QUESTION_MARK, REVERSE_SOLIDUS, RIGHT_CURLY_BRACKET, RIGHT_PARENTHESIS,
-        RIGHT_SQUARE_BRACKET, VERTICAL_LINE, CIRCUMFLEX_ACCENT, DOLLAR_SIGN, LATIN_CAPITAL_LETTER_B, LATIN_SMALL_LETTER_B,
+        RIGHT_SQUARE_BRACKET, VERTICAL_LINE, CIRCUMFLEX_ACCENT, DOLLAR_SIGN, LATIN_CAPITAL_LETTER_B, LATIN_SMALL_LETTER_B, FULL_STOP, ASTERISK, PLUS_SIGN,
     },
     EcmaVersion, Reader, RegExpSyntaxError,
 };
+
+static SYNTAX_CHARACTER: Lazy<HashSet<CodePoint>> = Lazy::new(|| {
+    [
+        CIRCUMFLEX_ACCENT,
+        DOLLAR_SIGN,
+        REVERSE_SOLIDUS,
+        FULL_STOP,
+        ASTERISK,
+        PLUS_SIGN,
+        QUESTION_MARK,
+        LEFT_PARENTHESIS,
+        RIGHT_PARENTHESIS,
+        LEFT_SQUARE_BRACKET,
+        RIGHT_SQUARE_BRACKET,
+        LEFT_CURLY_BRACKET,
+        RIGHT_CURLY_BRACKET,
+        VERTICAL_LINE
+    ].into_iter().collect()
+});
+
+fn is_syntax_character(cp: CodePoint) -> bool {
+    SYNTAX_CHARACTER.contains(&cp)
+}
 
 struct UnicodeSetsConsumeResult {
     may_contain_strings: Option<bool>,
@@ -77,8 +101,6 @@ pub enum UnicodePropertyCharacterKind {
     Property,
 }
 
-pub type UnicodeCodePoint = u32;
-
 pub enum CapturingGroupKey<'a> {
     Index(usize),
     Name(&'a str),
@@ -111,12 +133,12 @@ pub struct Options {
     on_unicode_property_character_set: Option<
         Box<dyn FnMut(usize, usize, UnicodePropertyCharacterKind, &str, Option<&str>, bool, bool)>,
     >,
-    on_character: Option<Box<dyn FnMut(usize, usize, UnicodeCodePoint)>>,
+    on_character: Option<Box<dyn FnMut(usize, usize, CodePoint)>>,
     on_backreference: Option<Box<dyn FnMut(usize, usize, CapturingGroupKey)>>,
     on_character_class_enter: Option<Box<dyn FnMut(usize, bool, bool)>>,
     on_character_class_leave: Option<Box<dyn FnMut(usize, usize, bool)>>,
     on_character_class_range:
-        Option<Box<dyn FnMut(usize, usize, UnicodeCodePoint, UnicodeCodePoint)>>,
+        Option<Box<dyn FnMut(usize, usize, CodePoint, CodePoint)>>,
     on_class_intersection: Option<Box<dyn FnMut(usize, usize)>>,
     on_class_subtraction: Option<Box<dyn FnMut(usize, usize)>>,
     on_class_string_disjunction_enter: Option<Box<dyn FnMut(usize)>>,
@@ -283,6 +305,12 @@ impl<'a> RegExpValidator<'a> {
     fn on_word_boundary_assertion(&mut self, start: usize, end: usize, kind: WordBoundaryKind, negate: bool) {
         if let Some(on_word_boundary_assertion) = self._options.on_word_boundary_assertion.as_mut() {
             on_word_boundary_assertion(start, end, kind, negate);
+        }
+    }
+
+    fn on_character(&mut self, start: usize, end: usize, value: CodePoint) {
+        if let Some(on_character) = self._options.on_character.as_mut() {
+            on_character(start, end, value);
         }
     }
 
@@ -547,7 +575,7 @@ impl<'a> RegExpValidator<'a> {
         unimplemented!()
     }
 
-    fn consume_atom(&self) -> bool {
+    fn consume_atom(&mut self) -> bool {
         self.consume_pattern_character() ||
             self.consume_dot() ||
             self.consume_reverse_solidus_atom_escape() ||
@@ -576,8 +604,15 @@ impl<'a> RegExpValidator<'a> {
         unimplemented!()
     }
 
-    fn consume_pattern_character(&self) -> bool {
-        unimplemented!()
+    fn consume_pattern_character(&mut self) -> bool {
+        let start = self.index();
+        let cp = self.current_code_point();
+        if let Some(cp) = cp.filter(|&cp| !is_syntax_character(cp)) {
+            self.advance();
+            self.on_character(start, self.index(), cp);
+            return true;
+        }
+        false
     }
 
     fn consume_character_class(&self) -> Option<UnicodeSetsConsumeResult> {
