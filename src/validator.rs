@@ -9,11 +9,12 @@ use crate::{
     reader::CodePoint,
     regexp_syntax_error::{self, new_reg_exp_syntax_error},
     unicode::{
-        ASTERISK, CIRCUMFLEX_ACCENT, DOLLAR_SIGN, EQUALS_SIGN, EXCLAMATION_MARK, FULL_STOP,
+        AMPERSAND, ASTERISK, BACKSPACE, CIRCUMFLEX_ACCENT, COLON, COMMA, COMMERCIAL_AT,
+        DOLLAR_SIGN, EQUALS_SIGN, EXCLAMATION_MARK, FULL_STOP, GRAVE_ACCENT, GREATER_THAN_SIGN,
         HYPHEN_MINUS, LATIN_CAPITAL_LETTER_B, LATIN_SMALL_LETTER_B, LATIN_SMALL_LETTER_C,
-        LEFT_CURLY_BRACKET, LEFT_PARENTHESIS, LEFT_SQUARE_BRACKET, LESS_THAN_SIGN, PLUS_SIGN,
-        QUESTION_MARK, REVERSE_SOLIDUS, RIGHT_CURLY_BRACKET, RIGHT_PARENTHESIS,
-        RIGHT_SQUARE_BRACKET, VERTICAL_LINE, AMPERSAND, NUMBER_SIGN, PERCENT_SIGN, COMMA, COLON, SEMICOLON, GREATER_THAN_SIGN, COMMERCIAL_AT, GRAVE_ACCENT, TILDE,
+        LEFT_CURLY_BRACKET, LEFT_PARENTHESIS, LEFT_SQUARE_BRACKET, LESS_THAN_SIGN, NUMBER_SIGN,
+        PERCENT_SIGN, PLUS_SIGN, QUESTION_MARK, REVERSE_SOLIDUS, RIGHT_CURLY_BRACKET,
+        RIGHT_PARENTHESIS, RIGHT_SQUARE_BRACKET, SEMICOLON, SOLIDUS, TILDE, VERTICAL_LINE,
     },
     EcmaVersion, Reader, RegExpSyntaxError,
 };
@@ -59,7 +60,45 @@ static CLASS_SET_RESERVED_DOUBLE_PUNCTUATOR_CHARACTER: Lazy<HashSet<CodePoint>> 
         COMMERCIAL_AT,
         CIRCUMFLEX_ACCENT,
         GRAVE_ACCENT,
-        TILDE
+        TILDE,
+    ]
+    .into_iter()
+    .collect()
+});
+
+static CLASS_SET_SYNTAX_CHARACTER: Lazy<HashSet<CodePoint>> = Lazy::new(|| {
+    [
+        LEFT_PARENTHESIS,
+        RIGHT_PARENTHESIS,
+        LEFT_SQUARE_BRACKET,
+        RIGHT_SQUARE_BRACKET,
+        LEFT_CURLY_BRACKET,
+        RIGHT_CURLY_BRACKET,
+        SOLIDUS,
+        HYPHEN_MINUS,
+        REVERSE_SOLIDUS,
+        VERTICAL_LINE,
+    ]
+    .into_iter()
+    .collect()
+});
+
+static CLASS_SET_RESERVED_PUNCTUATOR: Lazy<HashSet<CodePoint>> = Lazy::new(|| {
+    [
+        AMPERSAND,
+        HYPHEN_MINUS,
+        EXCLAMATION_MARK,
+        NUMBER_SIGN,
+        PERCENT_SIGN,
+        COMMA,
+        COLON,
+        SEMICOLON,
+        LESS_THAN_SIGN,
+        EQUALS_SIGN,
+        GREATER_THAN_SIGN,
+        COMMERCIAL_AT,
+        GRAVE_ACCENT,
+        TILDE,
     ]
     .into_iter()
     .collect()
@@ -71,6 +110,14 @@ fn is_syntax_character(cp: CodePoint) -> bool {
 
 fn is_class_set_reserved_double_punctuator_character(cp: Option<CodePoint>) -> bool {
     cp.matches(|cp| CLASS_SET_RESERVED_DOUBLE_PUNCTUATOR_CHARACTER.contains(&cp))
+}
+
+fn is_class_set_syntax_character(cp: CodePoint) -> bool {
+    CLASS_SET_SYNTAX_CHARACTER.contains(&cp)
+}
+
+fn is_class_set_reserved_punctuator(cp: Option<CodePoint>) -> bool {
+    cp.matches(|cp| CLASS_SET_RESERVED_PUNCTUATOR.contains(&cp))
 }
 
 #[derive(Copy, Clone, Default)]
@@ -398,21 +445,13 @@ impl<'a> RegExpValidator<'a> {
         }
     }
 
-    fn on_class_intersection(
-        &mut self,
-        start: usize,
-        end: usize,
-    ) {
+    fn on_class_intersection(&mut self, start: usize, end: usize) {
         if let Some(on_class_intersection) = self._options.on_class_intersection.as_mut() {
             on_class_intersection(start, end);
         }
     }
 
-    fn on_class_subtraction(
-        &mut self,
-        start: usize,
-        end: usize,
-    ) {
+    fn on_class_subtraction(&mut self, start: usize, end: usize) {
         if let Some(on_class_subtraction) = self._options.on_class_subtraction.as_mut() {
             on_class_subtraction(start, end);
         }
@@ -733,6 +772,10 @@ impl<'a> RegExpValidator<'a> {
         unimplemented!()
     }
 
+    fn consume_character_escape(&self) -> bool {
+        unimplemented!()
+    }
+
     fn consume_character_class(
         &mut self,
     ) -> Result<Option<UnicodeSetsConsumeResult>, RegExpSyntaxError> {
@@ -836,7 +879,9 @@ impl<'a> RegExpValidator<'a> {
         unimplemented!()
     }
 
-    fn consume_class_set_expression(&mut self) -> Result<UnicodeSetsConsumeResult, RegExpSyntaxError> {
+    fn consume_class_set_expression(
+        &mut self,
+    ) -> Result<UnicodeSetsConsumeResult, RegExpSyntaxError> {
         let start = self.index();
         let mut may_contain_strings = Some(false);
         let mut result: Option<UnicodeSetsConsumeResult> = Default::default();
@@ -902,7 +947,10 @@ impl<'a> RegExpValidator<'a> {
         }))
     }
 
-    fn consume_class_union_right(&self, left_result: UnicodeSetsConsumeResult) -> UnicodeSetsConsumeResult {
+    fn consume_class_union_right(
+        &self,
+        left_result: UnicodeSetsConsumeResult,
+    ) -> UnicodeSetsConsumeResult {
         unimplemented!()
     }
 
@@ -914,8 +962,35 @@ impl<'a> RegExpValidator<'a> {
         unimplemented!()
     }
 
-    fn consume_class_set_character(&self) -> bool {
-        unimplemented!()
+    fn consume_class_set_character(&mut self) -> bool {
+        let start = self.index();
+        let cp = self.current_code_point();
+        if cp != self.next_code_point() || !is_class_set_reserved_double_punctuator_character(cp) {
+            if let Some(cp) = cp.filter(|&cp| !is_class_set_syntax_character(cp)) {
+                self._last_int_value = Some(cp);
+                self.advance();
+                self.on_character(start, self.index(), self._last_int_value.unwrap());
+                return true;
+            }
+        }
+        if self.eat(REVERSE_SOLIDUS) {
+            if self.consume_character_escape() {
+                return true;
+            }
+            if is_class_set_reserved_punctuator(self.current_code_point()) {
+                self._last_int_value = self.current_code_point();
+                self.advance();
+                self.on_character(start, self.index(), self._last_int_value.unwrap());
+                return true;
+            }
+            if self.eat(LATIN_SMALL_LETTER_B) {
+                self._last_int_value = Some(BACKSPACE);
+                self.on_character(start, self.index(), self._last_int_value.unwrap());
+                return true;
+            }
+            self.rewind(start);
+        }
+        false
     }
 }
 
