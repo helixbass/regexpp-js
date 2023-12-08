@@ -1,3 +1,5 @@
+#![allow(clippy::into_iter_on_ref)]
+
 mod ecma_versions;
 mod reader;
 mod regexp_syntax_error;

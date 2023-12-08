@@ -2,7 +2,11 @@ use std::collections::HashSet;
 
 use serde::Deserialize;
 
-use crate::{EcmaVersion, RegExpSyntaxError, Reader, ecma_versions::LATEST_ECMA_VERSION, regexp_syntax_error::{new_reg_exp_syntax_error, self}};
+use crate::{
+    ecma_versions::LATEST_ECMA_VERSION,
+    regexp_syntax_error::{self, new_reg_exp_syntax_error},
+    EcmaVersion, Reader, RegExpSyntaxError,
+};
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum RegExpValidatorSourceContextKind {
@@ -174,15 +178,12 @@ impl<'a> RegExpValidator<'a> {
 
     fn validate_pattern_internal(
         &mut self,
-        source: &str,
+        source: &'a str,
         start: usize,
         end: usize,
         flags: Option<ValidatePatternFlags>,
     ) -> Result<(), RegExpSyntaxError> {
-        let mode = self._parse_flags_option_to_mode(
-            flags,
-            end,
-        )?;
+        let mode = self._parse_flags_option_to_mode(flags, end)?;
 
         self._unicode_mode = mode.unicode_mode;
         self._n_flag = mode.n_flag;
@@ -190,9 +191,10 @@ impl<'a> RegExpValidator<'a> {
         self.reset(source, start, end);
         self.consume_pattern();
 
-        if !self._n_flag &&
-            self.ecma_version() >= EcmaVersion::_2018 &&
-            !self._group_names.is_empty() {
+        if !self._n_flag
+            && self.ecma_version() >= EcmaVersion::_2018
+            && !self._group_names.is_empty()
+        {
             self._n_flag = true;
             self.rewind(start);
         }
@@ -200,9 +202,7 @@ impl<'a> RegExpValidator<'a> {
         Ok(())
     }
 
-    fn ecma_version(
-        &self,
-    ) -> EcmaVersion {
+    fn ecma_version(&self) -> EcmaVersion {
         self._options.ecma_version.unwrap_or(LATEST_ECMA_VERSION)
     }
 
@@ -227,64 +227,54 @@ impl<'a> RegExpValidator<'a> {
                     index: Some(source_end + 1),
                     unicode: Some(unicode),
                     unicode_sets: Some(unicode_sets),
-                })
+                }),
             )?;
         }
 
         let unicode_mode = unicode || unicode_sets;
-        let n_flag = unicode && self.ecma_version() >= EcmaVersion::_2018 ||
-            unicode_sets ||
-            self._options.strict == Some(true) && self.ecma_version() >= EcmaVersion::_2023;
+        let n_flag = unicode && self.ecma_version() >= EcmaVersion::_2018
+            || unicode_sets
+            || self._options.strict == Some(true) && self.ecma_version() >= EcmaVersion::_2023;
         let unicode_sets_mode = unicode_sets;
 
         Ok(Mode {
             unicode_mode,
             n_flag,
-            unicode_sets_mode
+            unicode_sets_mode,
         })
     }
 
-    fn index(
-        &self,
-    ) -> usize {
+    fn index(&self) -> usize {
         self._reader.index()
     }
 
-    fn reset(
-        &mut self,
-        source: &str,
-        start: usize,
-        end: usize,
-    ) {
+    fn reset(&mut self, source: &'a str, start: usize, end: usize) {
         self._reader.reset(source, start, end, self._unicode_mode);
     }
 
-    fn rewind(
-        &mut self,
-        index: usize,
-    ) {
+    fn rewind(&mut self, index: usize) {
         self._reader.rewind(index);
     }
 
-    fn raise(
-        &self,
-        message: &str,
-        context: Option<RaiseContext>,
-    ) -> Result<(), RegExpSyntaxError> {
+    fn raise(&self, message: &str, context: Option<RaiseContext>) -> Result<(), RegExpSyntaxError> {
         Err(new_reg_exp_syntax_error(
             self._src_ctx.as_ref().unwrap(),
             regexp_syntax_error::Flags {
-                unicode: context.and_then(|context| context.unicode).unwrap_or(self._unicode_mode && !self._unicode_sets_mode),
-                unicode_sets: context.and_then(|context| context.unicode_sets).unwrap_or(self._unicode_sets_mode),
+                unicode: context
+                    .and_then(|context| context.unicode)
+                    .unwrap_or(self._unicode_mode && !self._unicode_sets_mode),
+                unicode_sets: context
+                    .and_then(|context| context.unicode_sets)
+                    .unwrap_or(self._unicode_sets_mode),
             },
-            context.and_then(|context| context.index).unwrap_or(self.index()),
+            context
+                .and_then(|context| context.index)
+                .unwrap_or(self.index()),
             message,
         ))
     }
 
-    fn consume_pattern(
-        &self,
-    ) {
+    fn consume_pattern(&self) {
         unimplemented!()
     }
 }
