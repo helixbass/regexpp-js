@@ -2,15 +2,18 @@ use std::collections::HashSet;
 
 use once_cell::sync::Lazy;
 use serde::Deserialize;
+use squalid::OptionExt;
 
 use crate::{
     ecma_versions::LATEST_ECMA_VERSION,
     reader::CodePoint,
     regexp_syntax_error::{self, new_reg_exp_syntax_error},
     unicode::{
-        EQUALS_SIGN, EXCLAMATION_MARK, LEFT_CURLY_BRACKET, LEFT_PARENTHESIS, LEFT_SQUARE_BRACKET,
-        LESS_THAN_SIGN, QUESTION_MARK, REVERSE_SOLIDUS, RIGHT_CURLY_BRACKET, RIGHT_PARENTHESIS,
-        RIGHT_SQUARE_BRACKET, VERTICAL_LINE, CIRCUMFLEX_ACCENT, DOLLAR_SIGN, LATIN_CAPITAL_LETTER_B, LATIN_SMALL_LETTER_B, FULL_STOP, ASTERISK, PLUS_SIGN, HYPHEN_MINUS,
+        ASTERISK, CIRCUMFLEX_ACCENT, DOLLAR_SIGN, EQUALS_SIGN, EXCLAMATION_MARK, FULL_STOP,
+        HYPHEN_MINUS, LATIN_CAPITAL_LETTER_B, LATIN_SMALL_LETTER_B, LATIN_SMALL_LETTER_C,
+        LEFT_CURLY_BRACKET, LEFT_PARENTHESIS, LEFT_SQUARE_BRACKET, LESS_THAN_SIGN, PLUS_SIGN,
+        QUESTION_MARK, REVERSE_SOLIDUS, RIGHT_CURLY_BRACKET, RIGHT_PARENTHESIS,
+        RIGHT_SQUARE_BRACKET, VERTICAL_LINE, AMPERSAND, NUMBER_SIGN, PERCENT_SIGN, COMMA, COLON, SEMICOLON, GREATER_THAN_SIGN, COMMERCIAL_AT, GRAVE_ACCENT, TILDE,
     },
     EcmaVersion, Reader, RegExpSyntaxError,
 };
@@ -30,15 +33,47 @@ static SYNTAX_CHARACTER: Lazy<HashSet<CodePoint>> = Lazy::new(|| {
         RIGHT_SQUARE_BRACKET,
         LEFT_CURLY_BRACKET,
         RIGHT_CURLY_BRACKET,
-        VERTICAL_LINE
-    ].into_iter().collect()
+        VERTICAL_LINE,
+    ]
+    .into_iter()
+    .collect()
+});
+
+static CLASS_SET_RESERVED_DOUBLE_PUNCTUATOR_CHARACTER: Lazy<HashSet<CodePoint>> = Lazy::new(|| {
+    [
+        AMPERSAND,
+        EXCLAMATION_MARK,
+        NUMBER_SIGN,
+        DOLLAR_SIGN,
+        PERCENT_SIGN,
+        ASTERISK,
+        PLUS_SIGN,
+        COMMA,
+        FULL_STOP,
+        COLON,
+        SEMICOLON,
+        LESS_THAN_SIGN,
+        EQUALS_SIGN,
+        GREATER_THAN_SIGN,
+        QUESTION_MARK,
+        COMMERCIAL_AT,
+        CIRCUMFLEX_ACCENT,
+        GRAVE_ACCENT,
+        TILDE
+    ]
+    .into_iter()
+    .collect()
 });
 
 fn is_syntax_character(cp: CodePoint) -> bool {
     SYNTAX_CHARACTER.contains(&cp)
 }
 
-#[derive(Default)]
+fn is_class_set_reserved_double_punctuator_character(cp: Option<CodePoint>) -> bool {
+    cp.matches(|cp| CLASS_SET_RESERVED_DOUBLE_PUNCTUATOR_CHARACTER.contains(&cp))
+}
+
+#[derive(Copy, Clone, Default)]
 struct UnicodeSetsConsumeResult {
     may_contain_strings: Option<bool>,
 }
@@ -138,8 +173,7 @@ pub struct Options {
     on_backreference: Option<Box<dyn FnMut(usize, usize, CapturingGroupKey)>>,
     on_character_class_enter: Option<Box<dyn FnMut(usize, bool, bool)>>,
     on_character_class_leave: Option<Box<dyn FnMut(usize, usize, bool)>>,
-    on_character_class_range:
-        Option<Box<dyn FnMut(usize, usize, CodePoint, CodePoint)>>,
+    on_character_class_range: Option<Box<dyn FnMut(usize, usize, CodePoint, CodePoint)>>,
     on_class_intersection: Option<Box<dyn FnMut(usize, usize)>>,
     on_class_subtraction: Option<Box<dyn FnMut(usize, usize)>>,
     on_class_string_disjunction_enter: Option<Box<dyn FnMut(usize)>>,
@@ -174,7 +208,7 @@ pub struct RegExpValidator<'a> {
     _unicode_mode: bool,
     _unicode_sets_mode: bool,
     _n_flag: bool,
-    _last_int_value: Option<u32>,
+    _last_int_value: Option<CodePoint>,
     _last_assertion_is_quantifiable: bool,
     _num_capturing_parens: usize,
     _group_names: HashSet<String>,
@@ -288,13 +322,23 @@ impl<'a> RegExpValidator<'a> {
     }
 
     fn on_lookaround_assertion_enter(&mut self, start: usize, kind: LookaroundKind, negate: bool) {
-        if let Some(on_lookaround_assertion_enter) = self._options.on_lookaround_assertion_enter.as_mut() {
+        if let Some(on_lookaround_assertion_enter) =
+            self._options.on_lookaround_assertion_enter.as_mut()
+        {
             on_lookaround_assertion_enter(start, kind, negate);
         }
     }
 
-    fn on_lookaround_assertion_leave(&mut self, start: usize, end: usize, kind: LookaroundKind, negate: bool) {
-        if let Some(on_lookaround_assertion_leave) = self._options.on_lookaround_assertion_leave.as_mut() {
+    fn on_lookaround_assertion_leave(
+        &mut self,
+        start: usize,
+        end: usize,
+        kind: LookaroundKind,
+        negate: bool,
+    ) {
+        if let Some(on_lookaround_assertion_leave) =
+            self._options.on_lookaround_assertion_leave.as_mut()
+        {
             on_lookaround_assertion_leave(start, end, kind, negate);
         }
     }
@@ -305,8 +349,15 @@ impl<'a> RegExpValidator<'a> {
         }
     }
 
-    fn on_word_boundary_assertion(&mut self, start: usize, end: usize, kind: WordBoundaryKind, negate: bool) {
-        if let Some(on_word_boundary_assertion) = self._options.on_word_boundary_assertion.as_mut() {
+    fn on_word_boundary_assertion(
+        &mut self,
+        start: usize,
+        end: usize,
+        kind: WordBoundaryKind,
+        negate: bool,
+    ) {
+        if let Some(on_word_boundary_assertion) = self._options.on_word_boundary_assertion.as_mut()
+        {
             on_word_boundary_assertion(start, end, kind, negate);
         }
     }
@@ -335,9 +386,35 @@ impl<'a> RegExpValidator<'a> {
         }
     }
 
-    fn on_character_class_range(&mut self, start: usize, end: usize, min: u32, max: u32) {
+    fn on_character_class_range(
+        &mut self,
+        start: usize,
+        end: usize,
+        min: CodePoint,
+        max: CodePoint,
+    ) {
         if let Some(on_character_class_range) = self._options.on_character_class_range.as_mut() {
             on_character_class_range(start, end, min, max);
+        }
+    }
+
+    fn on_class_intersection(
+        &mut self,
+        start: usize,
+        end: usize,
+    ) {
+        if let Some(on_class_intersection) = self._options.on_class_intersection.as_mut() {
+            on_class_intersection(start, end);
+        }
+    }
+
+    fn on_class_subtraction(
+        &mut self,
+        start: usize,
+        end: usize,
+    ) {
+        if let Some(on_class_subtraction) = self._options.on_class_subtraction.as_mut() {
+            on_class_subtraction(start, end);
         }
     }
 
@@ -570,8 +647,7 @@ impl<'a> RegExpValidator<'a> {
         }
 
         if self.eat2(LEFT_PARENTHESIS, QUESTION_MARK) {
-            let lookbehind = self.ecma_version() >= EcmaVersion::_2018 &&
-                self.eat(LESS_THAN_SIGN);
+            let lookbehind = self.ecma_version() >= EcmaVersion::_2018 && self.eat(LESS_THAN_SIGN);
             let mut negate = false;
             if self.eat(EQUALS_SIGN) || {
                 negate = self.eat(EXCLAMATION_MARK);
@@ -603,12 +679,12 @@ impl<'a> RegExpValidator<'a> {
     }
 
     fn consume_atom(&mut self) -> Result<bool, RegExpSyntaxError> {
-        Ok(self.consume_pattern_character() ||
-            self.consume_dot() ||
-            self.consume_reverse_solidus_atom_escape() ||
-            self.consume_character_class()?.is_some() ||
-            self.consume_uncapturing_group() ||
-            self.consume_capturing_group())
+        Ok(self.consume_pattern_character()
+            || self.consume_dot()
+            || self.consume_reverse_solidus_atom_escape()
+            || self.consume_character_class()?.is_some()
+            || self.consume_uncapturing_group()
+            || self.consume_capturing_group())
     }
 
     fn consume_dot(&mut self) -> bool {
@@ -657,7 +733,9 @@ impl<'a> RegExpValidator<'a> {
         unimplemented!()
     }
 
-    fn consume_character_class(&mut self) -> Result<Option<UnicodeSetsConsumeResult>, RegExpSyntaxError> {
+    fn consume_character_class(
+        &mut self,
+    ) -> Result<Option<UnicodeSetsConsumeResult>, RegExpSyntaxError> {
         let start = self.index();
         if self.eat(LEFT_SQUARE_BRACKET) {
             let negate = self.eat(CIRCUMFLEX_ACCENT);
@@ -685,14 +763,14 @@ impl<'a> RegExpValidator<'a> {
             if self.current_code_point() == Some(RIGHT_SQUARE_BRACKET) {
                 return Ok(Default::default());
             }
-            let result = self.consume_class_set_expression();
+            let result = self.consume_class_set_expression()?;
 
             return Ok(result);
         }
         let strict = self.strict() || self._unicode_mode;
         loop {
             let range_start = self.index();
-            if !self.consume_class_atom() {
+            if !self.consume_class_atom()? {
                 break;
             }
             let min = self._last_int_value;
@@ -702,7 +780,7 @@ impl<'a> RegExpValidator<'a> {
             }
             self.on_character(self.index() - 1, self.index(), HYPHEN_MINUS);
 
-            if !self.consume_class_atom() {
+            if !self.consume_class_atom()? {
                 break;
             }
             let max = self._last_int_value;
@@ -725,11 +803,118 @@ impl<'a> RegExpValidator<'a> {
         Ok(Default::default())
     }
 
-    fn consume_class_atom(&self) -> bool {
+    fn consume_class_atom(&mut self) -> Result<bool, RegExpSyntaxError> {
+        let start = self.index();
+        let cp = self.current_code_point();
+
+        if let Some(cp) = cp.filter(|&cp| cp != REVERSE_SOLIDUS && cp != RIGHT_SQUARE_BRACKET) {
+            self.advance();
+            self._last_int_value = Some(cp);
+            self.on_character(start, self.index(), self._last_int_value.unwrap());
+            return Ok(true);
+        }
+
+        if self.eat(REVERSE_SOLIDUS) {
+            if self.consume_class_escape() {
+                return Ok(true);
+            }
+            if !self.strict() && self.current_code_point() == Some(LATIN_SMALL_LETTER_C) {
+                self._last_int_value = Some(REVERSE_SOLIDUS);
+                self.on_character(start, self.index(), self._last_int_value.unwrap());
+                return Ok(true);
+            }
+            if self.strict() || self._unicode_mode {
+                self.raise("Invalid escape", None)?;
+            }
+            self.rewind(start);
+        }
+
+        Ok(false)
+    }
+
+    fn consume_class_escape(&self) -> bool {
         unimplemented!()
     }
 
-    fn consume_class_set_expression(&self) -> UnicodeSetsConsumeResult {
+    fn consume_class_set_expression(&mut self) -> Result<UnicodeSetsConsumeResult, RegExpSyntaxError> {
+        let start = self.index();
+        let mut may_contain_strings = Some(false);
+        let mut result: Option<UnicodeSetsConsumeResult> = Default::default();
+        if self.consume_class_set_character() {
+            if self.consume_class_set_range_from_operator(start) {
+                self.consume_class_union_right(Default::default());
+                return Ok(Default::default());
+            }
+            may_contain_strings = Some(false);
+        } else if let Some(result) = {
+            result = self.consume_class_set_operand();
+            result
+        } {
+            may_contain_strings = result.may_contain_strings;
+        } else {
+            let cp = self.current_code_point();
+            if cp == Some(REVERSE_SOLIDUS) {
+                self.advance();
+                self.raise("Invalid escape", None)?;
+            }
+            if cp == self.next_code_point() && is_class_set_reserved_double_punctuator_character(cp)
+            {
+                self.raise("Invalid set operation in character class", None)?;
+            }
+            self.raise("Invalid character in character class", None)?;
+        }
+
+        if self.eat2(AMPERSAND, AMPERSAND) {
+            while self.current_code_point() != Some(AMPERSAND) && {
+                result = self.consume_class_set_operand();
+                result.is_some()
+            } {
+                self.on_class_intersection(start, self.index());
+                if result.unwrap().may_contain_strings != Some(true) {
+                    may_contain_strings = Some(false);
+                }
+                if self.eat2(AMPERSAND, AMPERSAND) {
+                    continue;
+                }
+
+                return Ok(UnicodeSetsConsumeResult {
+                    may_contain_strings,
+                });
+            }
+
+            self.raise("Invalid character in character class", None)?;
+        }
+        if self.eat2(HYPHEN_MINUS, HYPHEN_MINUS) {
+            while self.consume_class_set_operand().is_some() {
+                self.on_class_subtraction(start, self.index());
+                if self.eat2(HYPHEN_MINUS, HYPHEN_MINUS) {
+                    continue;
+                }
+
+                return Ok(UnicodeSetsConsumeResult {
+                    may_contain_strings,
+                });
+            }
+            self.raise("Invalid character in character class", None)?;
+        }
+        Ok(self.consume_class_union_right(UnicodeSetsConsumeResult {
+            may_contain_strings,
+        }))
+    }
+
+    fn consume_class_union_right(&self, left_result: UnicodeSetsConsumeResult) -> UnicodeSetsConsumeResult {
+        unimplemented!()
+    }
+
+    fn consume_class_set_range_from_operator(&self, start: usize) -> bool {
+        unimplemented!()
+    }
+
+    fn consume_class_set_operand(&self) -> Option<UnicodeSetsConsumeResult> {
+        unimplemented!()
+    }
+
+    fn consume_class_set_character(&self) -> bool {
         unimplemented!()
     }
 }
