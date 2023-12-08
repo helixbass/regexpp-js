@@ -6,7 +6,12 @@ use crate::{
     ecma_versions::LATEST_ECMA_VERSION,
     reader::CodePoint,
     regexp_syntax_error::{self, new_reg_exp_syntax_error},
-    EcmaVersion, Reader, RegExpSyntaxError, unicode::{REVERSE_SOLIDUS, LEFT_SQUARE_BRACKET, RIGHT_SQUARE_BRACKET, LEFT_PARENTHESIS, QUESTION_MARK, LESS_THAN_SIGN, EQUALS_SIGN, EXCLAMATION_MARK, VERTICAL_LINE, RIGHT_PARENTHESIS, RIGHT_CURLY_BRACKET},
+    unicode::{
+        EQUALS_SIGN, EXCLAMATION_MARK, LEFT_CURLY_BRACKET, LEFT_PARENTHESIS, LEFT_SQUARE_BRACKET,
+        LESS_THAN_SIGN, QUESTION_MARK, REVERSE_SOLIDUS, RIGHT_CURLY_BRACKET, RIGHT_PARENTHESIS,
+        RIGHT_SQUARE_BRACKET, VERTICAL_LINE,
+    },
+    EcmaVersion, Reader, RegExpSyntaxError,
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -142,6 +147,7 @@ pub struct RegExpValidator<'a> {
     _unicode_mode: bool,
     _unicode_sets_mode: bool,
     _n_flag: bool,
+    _last_assertion_is_quantifiable: bool,
     _num_capturing_parens: usize,
     _group_names: HashSet<String>,
     _backreference_names: HashSet<String>,
@@ -156,6 +162,7 @@ impl<'a> RegExpValidator<'a> {
             _unicode_mode: Default::default(),
             _unicode_sets_mode: Default::default(),
             _n_flag: Default::default(),
+            _last_assertion_is_quantifiable: Default::default(),
             _num_capturing_parens: Default::default(),
             _group_names: Default::default(),
             _backreference_names: Default::default(),
@@ -207,6 +214,10 @@ impl<'a> RegExpValidator<'a> {
         Ok(())
     }
 
+    fn strict(&self) -> bool {
+        self._options.strict.unwrap_or_default() || self._unicode_mode
+    }
+
     fn ecma_version(&self) -> EcmaVersion {
         self._options.ecma_version.unwrap_or(LATEST_ECMA_VERSION)
     }
@@ -226,6 +237,12 @@ impl<'a> RegExpValidator<'a> {
     fn on_disjunction_enter(&mut self, start: usize) {
         if let Some(on_disjunction_enter) = self._options.on_disjunction_enter.as_mut() {
             on_disjunction_enter(start);
+        }
+    }
+
+    fn on_disjunction_leave(&mut self, start: usize, end: usize) {
+        if let Some(on_disjunction_leave) = self._options.on_disjunction_leave.as_mut() {
+            on_disjunction_leave(start, end);
         }
     }
 
@@ -340,7 +357,7 @@ impl<'a> RegExpValidator<'a> {
         self._backreference_names.clear();
 
         self.on_pattern_enter(start);
-        self.consume_disjunction();
+        self.consume_disjunction()?;
 
         let cp = self.current_code_point();
         if let Some(cp) = cp {
@@ -396,7 +413,7 @@ impl<'a> RegExpValidator<'a> {
         count
     }
 
-    fn consume_disjunction(&mut self) {
+    fn consume_disjunction(&mut self) -> Result<(), RegExpSyntaxError> {
         let start = self.index();
         let mut i = 0;
 
@@ -406,7 +423,15 @@ impl<'a> RegExpValidator<'a> {
             i += 1;
             self.eat(VERTICAL_LINE)
         } {}
-        unimplemented!()
+
+        if self.consume_quantifier(Some(true)) {
+            self.raise("Nothing to repeat", None)?;
+        }
+        if self.eat(LEFT_CURLY_BRACKET) {
+            self.raise("Lone quantifier brackets", None)?;
+        }
+        self.on_disjunction_leave(start, self.index());
+        Ok(())
     }
 
     fn consume_alternative(&mut self, i: usize) {
@@ -417,7 +442,37 @@ impl<'a> RegExpValidator<'a> {
         self.on_alternative_leave(start, self.index(), i);
     }
 
-    fn consume_term(&self) -> bool {
+    fn consume_term(&mut self) -> bool {
+        if self._unicode_mode || self.strict() {
+            return self.consume_assertion()
+                || self.consume_atom() && self.consume_optional_quantifier();
+        }
+        self.consume_assertion()
+            && (!self._last_assertion_is_quantifiable || self.consume_optional_quantifier())
+            || self.consume_extended_atom() && self.consume_optional_quantifier()
+    }
+
+    fn consume_optional_quantifier(&self) -> bool {
+        unimplemented!()
+    }
+
+    fn consume_assertion(&mut self) -> bool {
+        let start = self.index();
+        self._last_assertion_is_quantifiable = false;
+
+        unimplemented!()
+    }
+
+    fn consume_quantifier(&self, no_consume: Option<bool>) -> bool {
+        let no_consume = no_consume.unwrap_or_default();
+        unimplemented!()
+    }
+
+    fn consume_atom(&self) -> bool {
+        unimplemented!()
+    }
+
+    fn consume_extended_atom(&self) -> bool {
         unimplemented!()
     }
 }
