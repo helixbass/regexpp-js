@@ -14,6 +14,10 @@ use crate::{
     EcmaVersion, Reader, RegExpSyntaxError,
 };
 
+struct UnicodeSetsConsumeResult {
+    may_contain_strings: Option<bool>,
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum RegExpValidatorSourceContextKind {
     Flags,
@@ -544,10 +548,39 @@ impl<'a> RegExpValidator<'a> {
     }
 
     fn consume_atom(&self) -> bool {
+        self.consume_pattern_character() ||
+            self.consume_dot() ||
+            self.consume_reverse_solidus_atom_escape() ||
+            self.consume_character_class().is_some() ||
+            self.consume_uncapturing_group() ||
+            self.consume_capturing_group()
+    }
+
+    fn consume_dot(&self) -> bool {
+        unimplemented!()
+    }
+
+    fn consume_reverse_solidus_atom_escape(&self) -> bool {
+        unimplemented!()
+    }
+
+    fn consume_uncapturing_group(&self) -> bool {
+        unimplemented!()
+    }
+
+    fn consume_capturing_group(&self) -> bool {
         unimplemented!()
     }
 
     fn consume_extended_atom(&self) -> bool {
+        unimplemented!()
+    }
+
+    fn consume_pattern_character(&self) -> bool {
+        unimplemented!()
+    }
+
+    fn consume_character_class(&self) -> Option<UnicodeSetsConsumeResult> {
         unimplemented!()
     }
 }
