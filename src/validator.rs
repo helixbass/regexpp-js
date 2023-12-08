@@ -4,8 +4,9 @@ use serde::Deserialize;
 
 use crate::{
     ecma_versions::LATEST_ECMA_VERSION,
+    reader::CodePoint,
     regexp_syntax_error::{self, new_reg_exp_syntax_error},
-    EcmaVersion, Reader, RegExpSyntaxError,
+    EcmaVersion, Reader, RegExpSyntaxError, unicode::{REVERSE_SOLIDUS, LEFT_SQUARE_BRACKET, RIGHT_SQUARE_BRACKET, LEFT_PARENTHESIS, QUESTION_MARK, LESS_THAN_SIGN, EQUALS_SIGN, EXCLAMATION_MARK, VERTICAL_LINE, RIGHT_PARENTHESIS, RIGHT_CURLY_BRACKET},
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -141,7 +142,9 @@ pub struct RegExpValidator<'a> {
     _unicode_mode: bool,
     _unicode_sets_mode: bool,
     _n_flag: bool,
+    _num_capturing_parens: usize,
     _group_names: HashSet<String>,
+    _backreference_names: HashSet<String>,
     _src_ctx: Option<RegExpValidatorSourceContext<'a>>,
 }
 
@@ -153,7 +156,9 @@ impl<'a> RegExpValidator<'a> {
             _unicode_mode: Default::default(),
             _unicode_sets_mode: Default::default(),
             _n_flag: Default::default(),
+            _num_capturing_parens: Default::default(),
             _group_names: Default::default(),
+            _backreference_names: Default::default(),
             _src_ctx: Default::default(),
         }
     }
@@ -189,7 +194,7 @@ impl<'a> RegExpValidator<'a> {
         self._n_flag = mode.n_flag;
         self._unicode_sets_mode = mode.unicode_sets_mode;
         self.reset(source, start, end);
-        self.consume_pattern();
+        self.consume_pattern()?;
 
         if !self._n_flag
             && self.ecma_version() >= EcmaVersion::_2018
@@ -204,6 +209,36 @@ impl<'a> RegExpValidator<'a> {
 
     fn ecma_version(&self) -> EcmaVersion {
         self._options.ecma_version.unwrap_or(LATEST_ECMA_VERSION)
+    }
+
+    fn on_pattern_enter(&mut self, start: usize) {
+        if let Some(on_pattern_enter) = self._options.on_pattern_enter.as_mut() {
+            on_pattern_enter(start);
+        }
+    }
+
+    fn on_pattern_leave(&mut self, start: usize, end: usize) {
+        if let Some(on_pattern_leave) = self._options.on_pattern_leave.as_mut() {
+            on_pattern_leave(start, end);
+        }
+    }
+
+    fn on_disjunction_enter(&mut self, start: usize) {
+        if let Some(on_disjunction_enter) = self._options.on_disjunction_enter.as_mut() {
+            on_disjunction_enter(start);
+        }
+    }
+
+    fn on_alternative_enter(&mut self, start: usize, index: usize) {
+        if let Some(on_alternative_enter) = self._options.on_alternative_enter.as_mut() {
+            on_alternative_enter(start, index);
+        }
+    }
+
+    fn on_alternative_leave(&mut self, start: usize, end: usize, index: usize) {
+        if let Some(on_alternative_leave) = self._options.on_alternative_leave.as_mut() {
+            on_alternative_leave(start, end, index);
+        }
     }
 
     fn _parse_flags_option_to_mode(
@@ -248,12 +283,36 @@ impl<'a> RegExpValidator<'a> {
         self._reader.index()
     }
 
+    fn current_code_point(&self) -> Option<CodePoint> {
+        self._reader.current_code_point()
+    }
+
+    fn next_code_point(&self) -> Option<CodePoint> {
+        self._reader.next_code_point()
+    }
+
+    fn next_code_point2(&self) -> Option<CodePoint> {
+        self._reader.next_code_point2()
+    }
+
+    fn next_code_point3(&self) -> Option<CodePoint> {
+        self._reader.next_code_point3()
+    }
+
     fn reset(&mut self, source: &'a str, start: usize, end: usize) {
         self._reader.reset(source, start, end, self._unicode_mode);
     }
 
     fn rewind(&mut self, index: usize) {
         self._reader.rewind(index);
+    }
+
+    fn advance(&mut self) {
+        self._reader.advance();
+    }
+
+    fn eat(&mut self, cp: CodePoint) -> bool {
+        self._reader.eat(cp)
     }
 
     fn raise(&self, message: &str, context: Option<RaiseContext>) -> Result<(), RegExpSyntaxError> {
@@ -274,7 +333,91 @@ impl<'a> RegExpValidator<'a> {
         ))
     }
 
-    fn consume_pattern(&self) {
+    fn consume_pattern(&mut self) -> Result<(), RegExpSyntaxError> {
+        let start = self.index();
+        self._num_capturing_parens = self.count_capturing_parens();
+        self._group_names.clear();
+        self._backreference_names.clear();
+
+        self.on_pattern_enter(start);
+        self.consume_disjunction();
+
+        let cp = self.current_code_point();
+        if let Some(cp) = cp {
+            if cp == RIGHT_PARENTHESIS {
+                self.raise("Unmatched ')'", None)?;
+            }
+            if cp == REVERSE_SOLIDUS {
+                self.raise("\\ at end of pattern", None)?;
+            }
+            if cp == RIGHT_SQUARE_BRACKET || cp == RIGHT_CURLY_BRACKET {
+                self.raise("Lone quantifier brackets", None)?;
+            }
+            let c = char::try_from(cp).unwrap();
+            self.raise(&format!("Unexpected character '{c}'"), None)?;
+        }
+        for name in &self._backreference_names {
+            if !self._group_names.contains(name) {
+                self.raise("Invalid named capture referenced", None)?;
+            }
+        }
+        self.on_pattern_leave(start, self.index());
+        Ok(())
+    }
+
+    fn count_capturing_parens(&mut self) -> usize {
+        let start = self.index();
+        let mut in_class = false;
+        let mut escaped = false;
+        let mut count = 0;
+
+        while let Some(cp) = self.current_code_point() {
+            if escaped {
+                escaped = false;
+            } else if cp == REVERSE_SOLIDUS {
+                escaped = true;
+            } else if cp == LEFT_SQUARE_BRACKET {
+                in_class = true;
+            } else if cp == RIGHT_SQUARE_BRACKET {
+                in_class = false;
+            } else if cp == LEFT_PARENTHESIS
+                && !in_class
+                && (self.next_code_point() != Some(QUESTION_MARK)
+                    || (self.next_code_point2() == Some(LESS_THAN_SIGN)
+                        && self.next_code_point3() != Some(EQUALS_SIGN)
+                        && self.next_code_point3() != Some(EXCLAMATION_MARK)))
+            {
+                count += 1;
+            }
+            self.advance();
+        }
+
+        self.rewind(start);
+        count
+    }
+
+    fn consume_disjunction(&mut self) {
+        let start = self.index();
+        let mut i = 0;
+
+        self.on_disjunction_enter(start);
+        while {
+            self.consume_alternative(i);
+            i += 1;
+            self.eat(VERTICAL_LINE)
+        } {}
+        unimplemented!()
+    }
+
+    fn consume_alternative(&mut self, i: usize) {
+        let start = self.index();
+
+        self.on_alternative_enter(start, i);
+        while self.current_code_point().is_some() && self.consume_term() {}
+        self.on_alternative_leave(start, self.index(), i);
+    }
+
+    fn consume_term(&self) -> bool {
         unimplemented!()
     }
 }

@@ -3,9 +3,10 @@
 mod ecma_versions;
 mod reader;
 mod regexp_syntax_error;
+mod unicode;
 mod validator;
 
 pub(crate) use ecma_versions::EcmaVersion;
-pub use reader::Reader;
+pub use reader::{CodePoint, Reader};
 pub use regexp_syntax_error::RegExpSyntaxError;
 pub use validator::RegExpValidator;

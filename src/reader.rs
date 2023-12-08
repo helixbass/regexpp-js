@@ -6,7 +6,10 @@ fn is_surrogate_code_point(value: u16) -> bool {
 
 fn get_single_surrogate_pair_code_point(values: &[u16]) -> CodePoint {
     let mut iterator = char::decode_utf16(values.into_iter().copied());
-    let first_char = iterator.next().expect("Should've gotten at least one char").expect("Expected valid surrogate pair");
+    let first_char = iterator
+        .next()
+        .expect("Should've gotten at least one char")
+        .expect("Expected valid surrogate pair");
     assert!(iterator.next().is_none(), "Expected only one char");
     let first_code_point: CodePoint = first_char.into();
     assert!(first_code_point > 0xffff);
@@ -75,6 +78,22 @@ impl Reader {
         self._i
     }
 
+    pub fn current_code_point(&self) -> Option<CodePoint> {
+        self._cp1
+    }
+
+    pub fn next_code_point(&self) -> Option<CodePoint> {
+        self._cp2
+    }
+
+    pub fn next_code_point2(&self) -> Option<CodePoint> {
+        self._cp3
+    }
+
+    pub fn next_code_point3(&self) -> Option<CodePoint> {
+        self._cp4
+    }
+
     pub fn reset(&mut self, source: &str, start: usize, end: usize, u_flag: bool) {
         self._use_unicode_impl = u_flag;
         self._start = start;
@@ -84,7 +103,10 @@ impl Reader {
     }
 
     pub fn rewind(&mut self, index: usize) {
-        assert!(index >= self._start, "Not expecting to rewind past initial start");
+        assert!(
+            index >= self._start,
+            "Not expecting to rewind past initial start"
+        );
         self._i = index;
         self._cp1 = self.at(index);
         self._w1 = self.width(self._cp1);
@@ -93,5 +115,26 @@ impl Reader {
         self._cp3 = self.at(index + self._w1 + self._w2);
         self._w3 = self.width(self._cp3);
         self._cp4 = self.at(index + self._w1 + self._w2 + self._w3);
+    }
+
+    pub fn advance(&mut self) {
+        if self._cp1.is_some() {
+            self._i += self._w1;
+            self._cp1 = self._cp2;
+            self._w1 = self._w2;
+            self._cp2 = self._cp3;
+            self._w2 = self.width(self._cp2);
+            self._cp3 = self._cp4;
+            self._w3 = self.width(self._cp3);
+            self._cp4 = self.at(self._i + self._w1 + self._w2 + self._w3);
+        }
+    }
+
+    pub fn eat(&mut self, cp: CodePoint) -> bool {
+        if self._cp1 == Some(cp) {
+            self.advance();
+            return true;
+        }
+        false
     }
 }
