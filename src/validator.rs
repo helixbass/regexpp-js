@@ -772,6 +772,10 @@ impl<'a> RegExpValidator<'a> {
         unimplemented!()
     }
 
+    fn consume_character_class_escape(&self) -> Option<UnicodeSetsConsumeResult> {
+        unimplemented!()
+    }
+
     fn consume_character_escape(&self) -> bool {
         unimplemented!()
     }
@@ -892,7 +896,7 @@ impl<'a> RegExpValidator<'a> {
             }
             may_contain_strings = Some(false);
         } else if let Some(result) = {
-            result = self.consume_class_set_operand();
+            result = self.consume_class_set_operand()?;
             result
         } {
             may_contain_strings = result.may_contain_strings;
@@ -911,7 +915,7 @@ impl<'a> RegExpValidator<'a> {
 
         if self.eat2(AMPERSAND, AMPERSAND) {
             while self.current_code_point() != Some(AMPERSAND) && {
-                result = self.consume_class_set_operand();
+                result = self.consume_class_set_operand()?;
                 result.is_some()
             } {
                 self.on_class_intersection(start, self.index());
@@ -930,7 +934,7 @@ impl<'a> RegExpValidator<'a> {
             self.raise("Invalid character in character class", None)?;
         }
         if self.eat2(HYPHEN_MINUS, HYPHEN_MINUS) {
-            while self.consume_class_set_operand().is_some() {
+            while self.consume_class_set_operand()?.is_some() {
                 self.on_class_subtraction(start, self.index());
                 if self.eat2(HYPHEN_MINUS, HYPHEN_MINUS) {
                     continue;
@@ -958,7 +962,49 @@ impl<'a> RegExpValidator<'a> {
         unimplemented!()
     }
 
-    fn consume_class_set_operand(&self) -> Option<UnicodeSetsConsumeResult> {
+    fn consume_class_set_operand(&mut self) -> Result<Option<UnicodeSetsConsumeResult>, RegExpSyntaxError> {
+        let mut result: Option<UnicodeSetsConsumeResult>;
+        result = self.consume_nested_class()?;
+        if let Some(result) = result {
+            return Ok(Some(result));
+        }
+        result = self.consume_class_string_disjunction();
+        if let Some(result) = result {
+            return Ok(Some(result));
+        }
+        if self.consume_class_set_character() {
+            return Ok(Some(Default::default()));
+        }
+        Ok(None)
+    }
+
+    fn consume_nested_class(&mut self) -> Result<Option<UnicodeSetsConsumeResult>, RegExpSyntaxError> {
+        let start = self.index();
+        if self.eat(LEFT_SQUARE_BRACKET) {
+            let negate = self.eat(CIRCUMFLEX_ACCENT);
+            self.on_character_class_enter(start, negate, true);
+            let result = self.consume_class_contents()?;
+            if !self.eat(RIGHT_SQUARE_BRACKET) {
+                self.raise("Unterminated character class", None)?;
+            }
+            if negate && result.may_contain_strings == Some(true) {
+                self.raise("Negated character class may contain strings", None)?;
+            }
+            self.on_character_class_leave(start, self.index(), negate);
+
+            return Ok(Some(result));
+        }
+        if self.eat(REVERSE_SOLIDUS) {
+            let result = self.consume_character_class_escape();
+            if let Some(result) = result {
+                return Ok(Some(result));
+            }
+            self.rewind(start);
+        }
+        Ok(None)
+    }
+
+    fn consume_class_string_disjunction(&self) -> Option<UnicodeSetsConsumeResult> {
         unimplemented!()
     }
 
