@@ -9,7 +9,7 @@ use crate::{
     unicode::{
         EQUALS_SIGN, EXCLAMATION_MARK, LEFT_CURLY_BRACKET, LEFT_PARENTHESIS, LEFT_SQUARE_BRACKET,
         LESS_THAN_SIGN, QUESTION_MARK, REVERSE_SOLIDUS, RIGHT_CURLY_BRACKET, RIGHT_PARENTHESIS,
-        RIGHT_SQUARE_BRACKET, VERTICAL_LINE,
+        RIGHT_SQUARE_BRACKET, VERTICAL_LINE, CIRCUMFLEX_ACCENT, DOLLAR_SIGN, LATIN_CAPITAL_LETTER_B, LATIN_SMALL_LETTER_B,
     },
     EcmaVersion, Reader, RegExpSyntaxError,
 };
@@ -258,6 +258,30 @@ impl<'a> RegExpValidator<'a> {
         }
     }
 
+    fn on_lookaround_assertion_enter(&mut self, start: usize, kind: LookaroundKind, negate: bool) {
+        if let Some(on_lookaround_assertion_enter) = self._options.on_lookaround_assertion_enter.as_mut() {
+            on_lookaround_assertion_enter(start, kind, negate);
+        }
+    }
+
+    fn on_lookaround_assertion_leave(&mut self, start: usize, end: usize, kind: LookaroundKind, negate: bool) {
+        if let Some(on_lookaround_assertion_leave) = self._options.on_lookaround_assertion_leave.as_mut() {
+            on_lookaround_assertion_leave(start, end, kind, negate);
+        }
+    }
+
+    fn on_edge_assertion(&mut self, start: usize, end: usize, kind: EdgeKind) {
+        if let Some(on_edge_assertion) = self._options.on_edge_assertion.as_mut() {
+            on_edge_assertion(start, end, kind);
+        }
+    }
+
+    fn on_word_boundary_assertion(&mut self, start: usize, end: usize, kind: WordBoundaryKind, negate: bool) {
+        if let Some(on_word_boundary_assertion) = self._options.on_word_boundary_assertion.as_mut() {
+            on_word_boundary_assertion(start, end, kind, negate);
+        }
+    }
+
     fn _parse_flags_option_to_mode(
         &self,
         flags: Option<ValidatePatternFlags>,
@@ -330,6 +354,14 @@ impl<'a> RegExpValidator<'a> {
 
     fn eat(&mut self, cp: CodePoint) -> bool {
         self._reader.eat(cp)
+    }
+
+    fn eat2(&mut self, cp1: CodePoint, cp2: CodePoint) -> bool {
+        self._reader.eat2(cp1, cp2)
+    }
+
+    fn eat3(&mut self, cp1: CodePoint, cp2: CodePoint, cp3: CodePoint) -> bool {
+        self._reader.eat3(cp1, cp2, cp3)
     }
 
     fn raise(&self, message: &str, context: Option<RaiseContext>) -> Result<(), RegExpSyntaxError> {
@@ -419,7 +451,7 @@ impl<'a> RegExpValidator<'a> {
 
         self.on_disjunction_enter(start);
         while {
-            self.consume_alternative(i);
+            self.consume_alternative(i)?;
             i += 1;
             self.eat(VERTICAL_LINE)
         } {}
@@ -434,33 +466,76 @@ impl<'a> RegExpValidator<'a> {
         Ok(())
     }
 
-    fn consume_alternative(&mut self, i: usize) {
+    fn consume_alternative(&mut self, i: usize) -> Result<(), RegExpSyntaxError> {
         let start = self.index();
 
         self.on_alternative_enter(start, i);
-        while self.current_code_point().is_some() && self.consume_term() {}
+        while self.current_code_point().is_some() && self.consume_term()? {}
         self.on_alternative_leave(start, self.index(), i);
+        Ok(())
     }
 
-    fn consume_term(&mut self) -> bool {
+    fn consume_term(&mut self) -> Result<bool, RegExpSyntaxError> {
         if self._unicode_mode || self.strict() {
-            return self.consume_assertion()
-                || self.consume_atom() && self.consume_optional_quantifier();
+            return Ok(self.consume_assertion()?
+                || self.consume_atom() && self.consume_optional_quantifier());
         }
-        self.consume_assertion()
+        Ok(self.consume_assertion()?
             && (!self._last_assertion_is_quantifiable || self.consume_optional_quantifier())
-            || self.consume_extended_atom() && self.consume_optional_quantifier()
+            || self.consume_extended_atom() && self.consume_optional_quantifier())
     }
 
     fn consume_optional_quantifier(&self) -> bool {
         unimplemented!()
     }
 
-    fn consume_assertion(&mut self) -> bool {
+    fn consume_assertion(&mut self) -> Result<bool, RegExpSyntaxError> {
         let start = self.index();
         self._last_assertion_is_quantifiable = false;
 
-        unimplemented!()
+        if self.eat(CIRCUMFLEX_ACCENT) {
+            self.on_edge_assertion(start, self.index(), EdgeKind::Start);
+            return Ok(true);
+        }
+        if self.eat(DOLLAR_SIGN) {
+            self.on_edge_assertion(start, self.index(), EdgeKind::End);
+            return Ok(true);
+        }
+        if self.eat2(REVERSE_SOLIDUS, LATIN_CAPITAL_LETTER_B) {
+            self.on_word_boundary_assertion(start, self.index(), WordBoundaryKind::Word, true);
+            return Ok(true);
+        }
+        if self.eat2(REVERSE_SOLIDUS, LATIN_SMALL_LETTER_B) {
+            self.on_word_boundary_assertion(start, self.index(), WordBoundaryKind::Word, false);
+            return Ok(true);
+        }
+
+        if self.eat2(LEFT_PARENTHESIS, QUESTION_MARK) {
+            let lookbehind = self.ecma_version() >= EcmaVersion::_2018 &&
+                self.eat(LESS_THAN_SIGN);
+            let mut negate = false;
+            if self.eat(EQUALS_SIGN) || {
+                negate = self.eat(EXCLAMATION_MARK);
+                negate
+            } {
+                let kind = if lookbehind {
+                    LookaroundKind::Lookbehind
+                } else {
+                    LookaroundKind::Lookahead
+                };
+                self.on_lookaround_assertion_enter(start, kind, negate);
+                self.consume_disjunction()?;
+                if !self.eat(RIGHT_PARENTHESIS) {
+                    self.raise("Unterminated group", None)?;
+                }
+                self._last_assertion_is_quantifiable = !lookbehind && !self.strict();
+                self.on_lookaround_assertion_leave(start, self.index(), kind, negate);
+                return Ok(true);
+            }
+            self.rewind(start);
+        }
+
+        Ok(false)
     }
 
     fn consume_quantifier(&self, no_consume: Option<bool>) -> bool {

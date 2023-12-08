@@ -137,4 +137,23 @@ impl Reader {
         }
         false
     }
+
+    pub fn eat2(&mut self, cp1: CodePoint, cp2: CodePoint) -> bool {
+        if self._cp1 == Some(cp1) && self._cp2 == Some(cp2) {
+            self.advance();
+            self.advance();
+            return true;
+        }
+        false
+    }
+
+    pub fn eat3(&mut self, cp1: CodePoint, cp2: CodePoint, cp3: CodePoint) -> bool {
+        if self._cp1 == Some(cp1) && self._cp2 == Some(cp2)  && self._cp3 == Some(cp3) {
+            self.advance();
+            self.advance();
+            self.advance();
+            return true;
+        }
+        false
+    }
 }
