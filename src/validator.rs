@@ -14,7 +14,7 @@ use crate::{
         HYPHEN_MINUS, LATIN_CAPITAL_LETTER_B, LATIN_SMALL_LETTER_B, LATIN_SMALL_LETTER_C,
         LEFT_CURLY_BRACKET, LEFT_PARENTHESIS, LEFT_SQUARE_BRACKET, LESS_THAN_SIGN, NUMBER_SIGN,
         PERCENT_SIGN, PLUS_SIGN, QUESTION_MARK, REVERSE_SOLIDUS, RIGHT_CURLY_BRACKET,
-        RIGHT_PARENTHESIS, RIGHT_SQUARE_BRACKET, SEMICOLON, SOLIDUS, TILDE, VERTICAL_LINE,
+        RIGHT_PARENTHESIS, RIGHT_SQUARE_BRACKET, SEMICOLON, SOLIDUS, TILDE, VERTICAL_LINE, LATIN_SMALL_LETTER_Q,
     },
     EcmaVersion, Reader, RegExpSyntaxError,
 };
@@ -454,6 +454,18 @@ impl<'a> RegExpValidator<'a> {
     fn on_class_subtraction(&mut self, start: usize, end: usize) {
         if let Some(on_class_subtraction) = self._options.on_class_subtraction.as_mut() {
             on_class_subtraction(start, end);
+        }
+    }
+
+    fn on_class_string_disjunction_enter(&mut self, start: usize) {
+        if let Some(on_class_string_disjunction_enter) = self._options.on_class_string_disjunction_enter.as_mut() {
+            on_class_string_disjunction_enter(start);
+        }
+    }
+
+    fn on_class_string_disjunction_leave(&mut self, start: usize, end: usize) {
+        if let Some(on_class_string_disjunction_leave) = self._options.on_class_string_disjunction_leave.as_mut() {
+            on_class_string_disjunction_leave(start, end);
         }
     }
 
@@ -1006,7 +1018,7 @@ impl<'a> RegExpValidator<'a> {
         if let Some(result) = result {
             return Ok(Some(result));
         }
-        result = self.consume_class_string_disjunction();
+        result = self.consume_class_string_disjunction()?;
         if let Some(result) = result {
             return Ok(Some(result));
         }
@@ -1042,7 +1054,34 @@ impl<'a> RegExpValidator<'a> {
         Ok(None)
     }
 
-    fn consume_class_string_disjunction(&self) -> Option<UnicodeSetsConsumeResult> {
+    fn consume_class_string_disjunction(&mut self) -> Result<Option<UnicodeSetsConsumeResult>, RegExpSyntaxError> {
+        let start = self.index();
+        if self.eat3(REVERSE_SOLIDUS, LATIN_SMALL_LETTER_Q, LEFT_CURLY_BRACKET) {
+            self.on_class_string_disjunction_enter(start);
+
+            let mut i = 0;
+            let mut may_contain_strings = false;
+            while {
+                if self.consume_class_string(i).may_contain_strings == Some(true) {
+                    may_contain_strings = true;
+                }
+                i += 1;
+                self.eat(VERTICAL_LINE)
+            } {}
+
+            if self.eat(RIGHT_CURLY_BRACKET) {
+                self.on_class_string_disjunction_leave(start, self.index());
+
+                return Ok(Some(UnicodeSetsConsumeResult {
+                    may_contain_strings: Some(may_contain_strings)
+                }));
+            }
+            self.raise("Unterminated class string disjunction", None)?;
+        }
+        Ok(None)
+    }
+
+    fn consume_class_string(&self, i: usize) -> UnicodeSetsConsumeResult {
         unimplemented!()
     }
 
