@@ -1,6 +1,6 @@
 use id_arena::{Arena, Id};
 
-use crate::ast::Node;
+use crate::ast::{Node, NodeInterface};
 
 pub struct AllArenas<'a> {
     nodes: Arena<Node<'a>>,
@@ -8,10 +8,16 @@ pub struct AllArenas<'a> {
 
 impl<'a> AllArenas<'a> {
     pub fn alloc_node(&mut self, node: Node<'a>) -> Id<Node<'a>> {
-        self.nodes.alloc(node)
+        let id = self.nodes.alloc(node);
+        self.node_mut(id).set_arena_id(id);
+        id
     }
 
     pub fn node(&self, node: Id<Node<'a>>) -> &Node<'a> {
         &self.nodes[node]
+    }
+
+    pub fn node_mut(&mut self, node: Id<Node<'a>>) -> &mut Node<'a> {
+        &mut self.nodes[node]
     }
 }

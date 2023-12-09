@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use derive_builder::Builder;
 use once_cell::sync::Lazy;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use squalid::OptionExt;
 
 use crate::{
@@ -154,43 +154,59 @@ pub struct RegExpFlags {
     pub unicode_sets: bool,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum LookaroundKind {
     Lookahead,
     Lookbehind,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum EdgeKind {
     End,
     Start,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum WordBoundaryKind {
     Word,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum AnyCharacterKind {
     Any,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum EscapeCharacterKind {
     Digit,
     Space,
     Word,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize)]
 pub enum UnicodePropertyCharacterKind {
     Property,
 }
 
+#[derive(Copy, Clone)]
 pub enum CapturingGroupKey<'a> {
     Index(usize),
     Name(&'a str),
+}
+
+#[derive(Serialize)]
+pub enum CapturingGroupKeyOwned {
+    Index(usize),
+    Name(String),
+}
+
+impl<'a> From<CapturingGroupKey<'a>> for CapturingGroupKeyOwned {
+    fn from(value: CapturingGroupKey<'a>) -> Self {
+        match value {
+            CapturingGroupKey::Index(value) => Self::Index(value),
+            CapturingGroupKey::Name(value) => Self::Name(value.to_owned()),
+        }
+    }
 }
 
 #[derive(Default)]
