@@ -1,5 +1,6 @@
 #![allow(clippy::into_iter_on_ref)]
 
+mod arena;
 mod ast;
 mod ecma_versions;
 mod reader;
