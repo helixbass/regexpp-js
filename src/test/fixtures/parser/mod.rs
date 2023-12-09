@@ -1,2 +1,2 @@
 #![cfg(test)]
-mod literal;
+pub mod literal;

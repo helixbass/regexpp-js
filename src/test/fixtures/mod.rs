@@ -1,2 +1,2 @@
 #![cfg(test)]
-mod parser;
+pub mod parser;

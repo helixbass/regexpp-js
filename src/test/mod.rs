@@ -1,2 +1,2 @@
 #![cfg(test)]
-mod fixtures;
+pub mod fixtures;
