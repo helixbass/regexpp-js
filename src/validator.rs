@@ -10,13 +10,15 @@ use crate::{
     reader::CodePoint,
     regexp_syntax_error::{self, new_reg_exp_syntax_error},
     unicode::{
-        AMPERSAND, ASTERISK, BACKSPACE, CIRCUMFLEX_ACCENT, COLON, COMMA, COMMERCIAL_AT,
-        DOLLAR_SIGN, EQUALS_SIGN, EXCLAMATION_MARK, FULL_STOP, GRAVE_ACCENT, GREATER_THAN_SIGN,
-        HYPHEN_MINUS, LATIN_CAPITAL_LETTER_B, LATIN_SMALL_LETTER_B, LATIN_SMALL_LETTER_C,
-        LATIN_SMALL_LETTER_Q, LEFT_CURLY_BRACKET, LEFT_PARENTHESIS, LEFT_SQUARE_BRACKET,
-        LESS_THAN_SIGN, NUMBER_SIGN, PERCENT_SIGN, PLUS_SIGN, QUESTION_MARK, REVERSE_SOLIDUS,
-        RIGHT_CURLY_BRACKET, RIGHT_PARENTHESIS, RIGHT_SQUARE_BRACKET, SEMICOLON, SOLIDUS, TILDE,
-        VERTICAL_LINE, LATIN_SMALL_LETTER_V, LATIN_SMALL_LETTER_D, LATIN_SMALL_LETTER_S, LATIN_SMALL_LETTER_Y, LATIN_SMALL_LETTER_U, LATIN_SMALL_LETTER_M, LATIN_SMALL_LETTER_I, LATIN_SMALL_LETTER_G,
+        is_line_terminator, AMPERSAND, ASTERISK, BACKSPACE, CIRCUMFLEX_ACCENT, COLON, COMMA,
+        COMMERCIAL_AT, DOLLAR_SIGN, EQUALS_SIGN, EXCLAMATION_MARK, FULL_STOP, GRAVE_ACCENT,
+        GREATER_THAN_SIGN, HYPHEN_MINUS, LATIN_CAPITAL_LETTER_B, LATIN_SMALL_LETTER_B,
+        LATIN_SMALL_LETTER_C, LATIN_SMALL_LETTER_D, LATIN_SMALL_LETTER_G, LATIN_SMALL_LETTER_I,
+        LATIN_SMALL_LETTER_M, LATIN_SMALL_LETTER_Q, LATIN_SMALL_LETTER_S, LATIN_SMALL_LETTER_U,
+        LATIN_SMALL_LETTER_V, LATIN_SMALL_LETTER_Y, LEFT_CURLY_BRACKET, LEFT_PARENTHESIS,
+        LEFT_SQUARE_BRACKET, LESS_THAN_SIGN, NUMBER_SIGN, PERCENT_SIGN, PLUS_SIGN, QUESTION_MARK,
+        REVERSE_SOLIDUS, RIGHT_CURLY_BRACKET, RIGHT_PARENTHESIS, RIGHT_SQUARE_BRACKET, SEMICOLON,
+        SOLIDUS, TILDE, VERTICAL_LINE,
     },
     EcmaVersion, Reader, RegExpSyntaxError,
 };
@@ -283,6 +285,50 @@ impl<'a> RegExpValidator<'a> {
         }
     }
 
+    pub fn validate_literal(
+        &mut self,
+        source: &'a str,
+        start: Option<usize>,
+        end: Option<usize>,
+    ) -> Result<(), RegExpSyntaxError> {
+        let start = start.unwrap_or(0);
+        let end = end.unwrap_or(source.len());
+        self._src_ctx = Some(RegExpValidatorSourceContext {
+            source,
+            start,
+            end,
+            kind: RegExpValidatorSourceContextKind::Literal,
+        });
+        self._unicode_sets_mode = false;
+        self._unicode_mode = false;
+        self._n_flag = false;
+        self.reset(source, start, end);
+
+        self.on_literal_enter(start);
+        if self.eat(SOLIDUS) && self.eat_reg_exp_body()? && self.eat(SOLIDUS) {
+            let flag_start = self.index();
+            let unicode = source[flag_start..].contains('u');
+            let unicode_sets = source[flag_start..].contains('v');
+            self.validate_flags_internal(source, flag_start, end)?;
+            self.validate_pattern_internal(
+                source,
+                start + 1,
+                flag_start - 1,
+                Some(ValidatePatternFlags {
+                    unicode: Some(unicode),
+                    unicode_sets: Some(unicode_sets),
+                }),
+            )?;
+        } else if start >= end {
+            self.raise("Empty", None)?;
+        } else {
+            let c = char::try_from(self.current_code_point().unwrap()).unwrap();
+            self.raise(&format!("Unexpected character '{c}'"), None)?;
+        }
+        self.on_literal_leave(start, end);
+        Ok(())
+    }
+
     pub fn validate_flags(
         &mut self,
         source: &'a str,
@@ -365,8 +411,8 @@ impl<'a> RegExpValidator<'a> {
 
             if existing_flags.contains(&flag) {
                 // TODO: technically probably should handle the failure of char::try_from()
-                // here (and below) which I believe would fail if this is part of a
-                // surrogate pair?
+                // here (and below, and in validate_literal()) which I believe would fail
+                // if this is part of a surrogate pair?
                 self.raise(
                     &format!("Duplicated flag '{}'", char::try_from(flag).unwrap()),
                     Some(RaiseContextBuilder::default().index(start).build().unwrap()),
@@ -397,16 +443,20 @@ impl<'a> RegExpValidator<'a> {
                 )?;
             }
         }
-        self.on_reg_exp_flags(start, end, RegExpFlags {
-            global,
-            ignore_case,
-            multiline,
-            unicode,
-            sticky,
-            dot_all,
-            has_indices,
-            unicode_sets,
-        });
+        self.on_reg_exp_flags(
+            start,
+            end,
+            RegExpFlags {
+                global,
+                ignore_case,
+                multiline,
+                unicode,
+                sticky,
+                dot_all,
+                has_indices,
+                unicode_sets,
+            },
+        );
         Ok(())
     }
 
@@ -416,6 +466,18 @@ impl<'a> RegExpValidator<'a> {
 
     fn ecma_version(&self) -> EcmaVersion {
         self._options.ecma_version.unwrap_or(LATEST_ECMA_VERSION)
+    }
+
+    fn on_literal_enter(&mut self, start: usize) {
+        if let Some(on_literal_enter) = self._options.on_literal_enter.as_mut() {
+            on_literal_enter(start);
+        }
+    }
+
+    fn on_literal_leave(&mut self, start: usize, end: usize) {
+        if let Some(on_literal_leave) = self._options.on_literal_leave.as_mut() {
+            on_literal_leave(start, end);
+        }
     }
 
     fn on_reg_exp_flags(&mut self, start: usize, end: usize, flags: RegExpFlags) {
@@ -663,6 +725,42 @@ impl<'a> RegExpValidator<'a> {
                 .unwrap_or(self.index()),
             message,
         ))
+    }
+
+    fn eat_reg_exp_body(&mut self) -> Result<bool, RegExpSyntaxError> {
+        let start = self.index();
+        let mut in_class = false;
+        let mut escaped = false;
+
+        loop {
+            let cp = self.current_code_point();
+            if match cp {
+                None => true,
+                Some(cp) => is_line_terminator(cp),
+            } {
+                let kind = if in_class {
+                    "character class"
+                } else {
+                    "regular expression"
+                };
+                self.raise(&format!("Unterminated {kind}"), None)?;
+            }
+            let cp = cp.unwrap();
+            if escaped {
+                escaped = false;
+            } else if cp == REVERSE_SOLIDUS {
+                escaped = true;
+            } else if cp == LEFT_SQUARE_BRACKET {
+                in_class = true;
+            } else if cp == RIGHT_SQUARE_BRACKET {
+                in_class = false;
+            } else if cp == SOLIDUS && !in_class || cp == ASTERISK && self.index() == start {
+                break;
+            }
+            self.advance();
+        }
+
+        Ok(self.index() != start)
     }
 
     fn consume_pattern(&mut self) -> Result<(), RegExpSyntaxError> {
@@ -1250,6 +1348,12 @@ mod tests {
             .expect_err("Should fail, but succeeded.")
     }
 
+    fn get_error_for_literal(source: &str, start: usize, end: usize) -> RegExpSyntaxError {
+        validator()
+            .validate_literal(source, Some(start), Some(end))
+            .expect_err("Should fail, but succeeded.")
+    }
+
     #[test]
     fn test_validate_pattern_should_throw_syntax_error() {
         #[derive(Deserialize)]
@@ -1359,6 +1463,37 @@ mod tests {
 
         for test in cases {
             let error = get_error_for_flags(&test.source, test.start, test.end);
+
+            assert_that!(&error).is_equal_to(&test.error);
+        }
+    }
+
+    #[test]
+    fn test_validate_literal_should_throw_syntax_error() {
+        #[derive(Deserialize)]
+        struct Case {
+            source: String,
+            start: usize,
+            end: usize,
+            error: RegExpSyntaxError,
+        }
+
+        let cases: Vec<Case> = serde_json::from_value(json!([
+            {
+                "source": " /[/ ",
+                "start": 1,
+                "end": 4,
+                "error": {
+                    "message":
+                        "Invalid regular expression: /[/: Unterminated character class",
+                    "index": 4,
+                },
+            },
+        ]))
+        .unwrap();
+
+        for test in cases {
+            let error = get_error_for_literal(&test.source, test.start, test.end);
 
             assert_that!(&error).is_equal_to(&test.error);
         }
