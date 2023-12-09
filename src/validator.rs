@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use derive_builder::Builder;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use squalid::OptionExt;
@@ -12,9 +13,10 @@ use crate::{
         AMPERSAND, ASTERISK, BACKSPACE, CIRCUMFLEX_ACCENT, COLON, COMMA, COMMERCIAL_AT,
         DOLLAR_SIGN, EQUALS_SIGN, EXCLAMATION_MARK, FULL_STOP, GRAVE_ACCENT, GREATER_THAN_SIGN,
         HYPHEN_MINUS, LATIN_CAPITAL_LETTER_B, LATIN_SMALL_LETTER_B, LATIN_SMALL_LETTER_C,
-        LEFT_CURLY_BRACKET, LEFT_PARENTHESIS, LEFT_SQUARE_BRACKET, LESS_THAN_SIGN, NUMBER_SIGN,
-        PERCENT_SIGN, PLUS_SIGN, QUESTION_MARK, REVERSE_SOLIDUS, RIGHT_CURLY_BRACKET,
-        RIGHT_PARENTHESIS, RIGHT_SQUARE_BRACKET, SEMICOLON, SOLIDUS, TILDE, VERTICAL_LINE, LATIN_SMALL_LETTER_Q,
+        LATIN_SMALL_LETTER_Q, LEFT_CURLY_BRACKET, LEFT_PARENTHESIS, LEFT_SQUARE_BRACKET,
+        LESS_THAN_SIGN, NUMBER_SIGN, PERCENT_SIGN, PLUS_SIGN, QUESTION_MARK, REVERSE_SOLIDUS,
+        RIGHT_CURLY_BRACKET, RIGHT_PARENTHESIS, RIGHT_SQUARE_BRACKET, SEMICOLON, SOLIDUS, TILDE,
+        VERTICAL_LINE, LATIN_SMALL_LETTER_V, LATIN_SMALL_LETTER_D, LATIN_SMALL_LETTER_S, LATIN_SMALL_LETTER_Y, LATIN_SMALL_LETTER_U, LATIN_SMALL_LETTER_M, LATIN_SMALL_LETTER_I, LATIN_SMALL_LETTER_G,
     },
     EcmaVersion, Reader, RegExpSyntaxError,
 };
@@ -242,7 +244,8 @@ struct Mode {
     unicode_sets_mode: bool,
 }
 
-#[derive(Copy, Clone, Default)]
+#[derive(Builder, Copy, Clone, Default)]
+#[builder(default, setter(strip_option))]
 struct RaiseContext {
     index: Option<usize>,
     unicode: Option<bool>,
@@ -278,6 +281,23 @@ impl<'a> RegExpValidator<'a> {
             _backreference_names: Default::default(),
             _src_ctx: Default::default(),
         }
+    }
+
+    pub fn validate_flags(
+        &mut self,
+        source: &'a str,
+        start: Option<usize>,
+        end: Option<usize>,
+    ) -> Result<(), RegExpSyntaxError> {
+        let start = start.unwrap_or(0);
+        let end = end.unwrap_or(source.len());
+        self._src_ctx = Some(RegExpValidatorSourceContext {
+            source,
+            start,
+            end,
+            kind: RegExpValidatorSourceContextKind::Flags,
+        });
+        self.validate_flags_internal(source, start, end)
     }
 
     pub fn validate_pattern(
@@ -324,12 +344,84 @@ impl<'a> RegExpValidator<'a> {
         Ok(())
     }
 
+    fn validate_flags_internal(
+        &mut self,
+        source: &'a str,
+        start: usize,
+        end: usize,
+    ) -> Result<(), RegExpSyntaxError> {
+        let mut existing_flags: HashSet<CodePoint> = Default::default();
+        let mut global = false;
+        let mut ignore_case = false;
+        let mut multiline = false;
+        let mut sticky = false;
+        let mut unicode = false;
+        let mut dot_all = false;
+        let mut has_indices = false;
+        let mut unicode_sets = false;
+        let source_utf16 = source[start..end].encode_utf16().collect::<Vec<_>>();
+        for flag in source_utf16 {
+            let flag: CodePoint = flag.into();
+
+            if existing_flags.contains(&flag) {
+                // TODO: technically probably should handle the failure of char::try_from()
+                // here (and below) which I believe would fail if this is part of a
+                // surrogate pair?
+                self.raise(
+                    &format!("Duplicated flag '{}'", char::try_from(flag).unwrap()),
+                    Some(RaiseContextBuilder::default().index(start).build().unwrap()),
+                )?;
+            }
+            existing_flags.insert(flag);
+
+            if flag == LATIN_SMALL_LETTER_G {
+                global = true;
+            } else if flag == LATIN_SMALL_LETTER_I {
+                ignore_case = true;
+            } else if flag == LATIN_SMALL_LETTER_M {
+                multiline = true;
+            } else if flag == LATIN_SMALL_LETTER_U && self.ecma_version() >= EcmaVersion::_2015 {
+                unicode = true;
+            } else if flag == LATIN_SMALL_LETTER_Y && self.ecma_version() >= EcmaVersion::_2015 {
+                sticky = true;
+            } else if flag == LATIN_SMALL_LETTER_S && self.ecma_version() >= EcmaVersion::_2018 {
+                dot_all = true;
+            } else if flag == LATIN_SMALL_LETTER_D && self.ecma_version() >= EcmaVersion::_2022 {
+                has_indices = true;
+            } else if flag == LATIN_SMALL_LETTER_V && self.ecma_version() >= EcmaVersion::_2024 {
+                unicode_sets = true;
+            } else {
+                self.raise(
+                    &format!("Invalid flag '{}'", char::try_from(flag).unwrap()),
+                    Some(RaiseContextBuilder::default().index(start).build().unwrap()),
+                )?;
+            }
+        }
+        self.on_reg_exp_flags(start, end, RegExpFlags {
+            global,
+            ignore_case,
+            multiline,
+            unicode,
+            sticky,
+            dot_all,
+            has_indices,
+            unicode_sets,
+        });
+        Ok(())
+    }
+
     fn strict(&self) -> bool {
         self._options.strict.unwrap_or_default() || self._unicode_mode
     }
 
     fn ecma_version(&self) -> EcmaVersion {
         self._options.ecma_version.unwrap_or(LATEST_ECMA_VERSION)
+    }
+
+    fn on_reg_exp_flags(&mut self, start: usize, end: usize, flags: RegExpFlags) {
+        if let Some(on_reg_exp_flags) = self._options.on_reg_exp_flags.as_mut() {
+            on_reg_exp_flags(start, end, flags);
+        }
     }
 
     fn on_pattern_enter(&mut self, start: usize) {
@@ -458,13 +550,17 @@ impl<'a> RegExpValidator<'a> {
     }
 
     fn on_class_string_disjunction_enter(&mut self, start: usize) {
-        if let Some(on_class_string_disjunction_enter) = self._options.on_class_string_disjunction_enter.as_mut() {
+        if let Some(on_class_string_disjunction_enter) =
+            self._options.on_class_string_disjunction_enter.as_mut()
+        {
             on_class_string_disjunction_enter(start);
         }
     }
 
     fn on_class_string_disjunction_leave(&mut self, start: usize, end: usize) {
-        if let Some(on_class_string_disjunction_leave) = self._options.on_class_string_disjunction_leave.as_mut() {
+        if let Some(on_class_string_disjunction_leave) =
+            self._options.on_class_string_disjunction_leave.as_mut()
+        {
             on_class_string_disjunction_leave(start, end);
         }
     }
@@ -985,11 +1081,14 @@ impl<'a> RegExpValidator<'a> {
         }
 
         Ok(UnicodeSetsConsumeResult {
-            may_contain_strings
+            may_contain_strings,
         })
     }
 
-    fn consume_class_set_range_from_operator(&mut self, start: usize) -> Result<bool, RegExpSyntaxError> {
+    fn consume_class_set_range_from_operator(
+        &mut self,
+        start: usize,
+    ) -> Result<bool, RegExpSyntaxError> {
         let current_start = self.index();
         let min = self._last_int_value;
         if self.eat(HYPHEN_MINUS) {
@@ -1012,7 +1111,9 @@ impl<'a> RegExpValidator<'a> {
         Ok(false)
     }
 
-    fn consume_class_set_operand(&mut self) -> Result<Option<UnicodeSetsConsumeResult>, RegExpSyntaxError> {
+    fn consume_class_set_operand(
+        &mut self,
+    ) -> Result<Option<UnicodeSetsConsumeResult>, RegExpSyntaxError> {
         let mut result: Option<UnicodeSetsConsumeResult>;
         result = self.consume_nested_class()?;
         if let Some(result) = result {
@@ -1028,7 +1129,9 @@ impl<'a> RegExpValidator<'a> {
         Ok(None)
     }
 
-    fn consume_nested_class(&mut self) -> Result<Option<UnicodeSetsConsumeResult>, RegExpSyntaxError> {
+    fn consume_nested_class(
+        &mut self,
+    ) -> Result<Option<UnicodeSetsConsumeResult>, RegExpSyntaxError> {
         let start = self.index();
         if self.eat(LEFT_SQUARE_BRACKET) {
             let negate = self.eat(CIRCUMFLEX_ACCENT);
@@ -1054,7 +1157,9 @@ impl<'a> RegExpValidator<'a> {
         Ok(None)
     }
 
-    fn consume_class_string_disjunction(&mut self) -> Result<Option<UnicodeSetsConsumeResult>, RegExpSyntaxError> {
+    fn consume_class_string_disjunction(
+        &mut self,
+    ) -> Result<Option<UnicodeSetsConsumeResult>, RegExpSyntaxError> {
         let start = self.index();
         if self.eat3(REVERSE_SOLIDUS, LATIN_SMALL_LETTER_Q, LEFT_CURLY_BRACKET) {
             self.on_class_string_disjunction_enter(start);
@@ -1073,7 +1178,7 @@ impl<'a> RegExpValidator<'a> {
                 self.on_class_string_disjunction_leave(start, self.index());
 
                 return Ok(Some(UnicodeSetsConsumeResult {
-                    may_contain_strings: Some(may_contain_strings)
+                    may_contain_strings: Some(may_contain_strings),
                 }));
             }
             self.raise("Unterminated class string disjunction", None)?;
@@ -1139,6 +1244,12 @@ mod tests {
             .expect_err("Should fail, but succeeded.")
     }
 
+    fn get_error_for_flags(source: &str, start: usize, end: usize) -> RegExpSyntaxError {
+        validator()
+            .validate_flags(source, Some(start), Some(end))
+            .expect_err("Should fail, but succeeded.")
+    }
+
     #[test]
     fn test_validate_pattern_should_throw_syntax_error() {
         #[derive(Deserialize)]
@@ -1200,6 +1311,54 @@ mod tests {
 
         for test in cases {
             let error = get_error_for_pattern(&test.source, test.start, test.end, test.flags);
+
+            assert_that!(&error).is_equal_to(&test.error);
+        }
+    }
+
+    #[test]
+    fn test_validate_flags_should_throw_syntax_error() {
+        #[derive(Deserialize)]
+        struct Case {
+            source: String,
+            start: usize,
+            end: usize,
+            error: RegExpSyntaxError,
+        }
+
+        let cases: Vec<Case> = serde_json::from_value(json!([
+            {
+                "source": "abcd",
+                "start": 0,
+                "end": 2,
+                "error": {
+                    "message": "Invalid regular expression: Invalid flag 'a'",
+                    "index": 0,
+                },
+            },
+            {
+                "source": "dd",
+                "start": 0,
+                "end": 2,
+                "error": {
+                    "message": "Invalid regular expression: Duplicated flag 'd'",
+                    "index": 0,
+                },
+            },
+            {
+                "source": "/a/dd",
+                "start": 3,
+                "end": 5,
+                "error": {
+                    "message": "Invalid regular expression: Duplicated flag 'd'",
+                    "index": 3,
+                },
+            },
+        ]))
+        .unwrap();
+
+        for test in cases {
+            let error = get_error_for_flags(&test.source, test.start, test.end);
 
             assert_that!(&error).is_equal_to(&test.error);
         }
