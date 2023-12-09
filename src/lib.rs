@@ -5,6 +5,8 @@ mod ast;
 mod ecma_versions;
 mod reader;
 mod regexp_syntax_error;
+#[cfg(test)]
+mod test;
 mod unicode;
 mod validator;
 

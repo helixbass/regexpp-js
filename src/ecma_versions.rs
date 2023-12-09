@@ -1,4 +1,6 @@
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+use serde::Deserialize;
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
 pub enum EcmaVersion {
     _5,
     _2015,
