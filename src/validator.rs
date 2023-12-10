@@ -155,36 +155,22 @@ pub struct RegExpFlags {
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum LookaroundKind {
+#[serde(rename_all = "camelCase")]
+pub enum AssertionKind {
     Lookahead,
     Lookbehind,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum EdgeKind {
     End,
     Start,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum WordBoundaryKind {
     Word,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum AnyCharacterKind {
+#[serde(rename_all = "camelCase")]
+pub enum CharacterKind {
     Any,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum EscapeCharacterKind {
     Digit,
     Space,
     Word,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum UnicodePropertyCharacterKind {
     Property,
 }
 
@@ -227,14 +213,14 @@ pub struct Options {
     on_capturing_group_enter: Option<Box<dyn FnMut(usize, Option<&str>)>>,
     on_capturing_group_leave: Option<Box<dyn FnMut(usize, usize, Option<&str>)>>,
     on_quantifier: Option<Box<dyn FnMut(usize, usize, usize, usize, bool)>>,
-    on_lookaround_assertion_enter: Option<Box<dyn FnMut(usize, LookaroundKind, bool)>>,
-    on_lookaround_assertion_leave: Option<Box<dyn FnMut(usize, usize, LookaroundKind, bool)>>,
-    on_edge_assertion: Option<Box<dyn FnMut(usize, usize, EdgeKind)>>,
-    on_word_boundary_assertion: Option<Box<dyn FnMut(usize, usize, WordBoundaryKind, bool)>>,
-    on_any_character_set: Option<Box<dyn FnMut(usize, usize, AnyCharacterKind)>>,
-    on_escape_character_set: Option<Box<dyn FnMut(usize, usize, EscapeCharacterKind, bool)>>,
+    on_lookaround_assertion_enter: Option<Box<dyn FnMut(usize, AssertionKind, bool)>>,
+    on_lookaround_assertion_leave: Option<Box<dyn FnMut(usize, usize, AssertionKind, bool)>>,
+    on_edge_assertion: Option<Box<dyn FnMut(usize, usize, AssertionKind)>>,
+    on_word_boundary_assertion: Option<Box<dyn FnMut(usize, usize, AssertionKind, bool)>>,
+    on_any_character_set: Option<Box<dyn FnMut(usize, usize, CharacterKind)>>,
+    on_escape_character_set: Option<Box<dyn FnMut(usize, usize, CharacterKind, bool)>>,
     on_unicode_property_character_set: Option<
-        Box<dyn FnMut(usize, usize, UnicodePropertyCharacterKind, &str, Option<&str>, bool, bool)>,
+        Box<dyn FnMut(usize, usize, CharacterKind, &str, Option<&str>, bool, bool)>,
     >,
     on_character: Option<Box<dyn FnMut(usize, usize, CodePoint)>>,
     on_backreference: Option<Box<dyn FnMut(usize, usize, CapturingGroupKey)>>,
@@ -538,7 +524,7 @@ impl<'a> RegExpValidator<'a> {
         }
     }
 
-    fn on_lookaround_assertion_enter(&mut self, start: usize, kind: LookaroundKind, negate: bool) {
+    fn on_lookaround_assertion_enter(&mut self, start: usize, kind: AssertionKind, negate: bool) {
         if let Some(on_lookaround_assertion_enter) =
             self._options.on_lookaround_assertion_enter.as_mut()
         {
@@ -550,7 +536,7 @@ impl<'a> RegExpValidator<'a> {
         &mut self,
         start: usize,
         end: usize,
-        kind: LookaroundKind,
+        kind: AssertionKind,
         negate: bool,
     ) {
         if let Some(on_lookaround_assertion_leave) =
@@ -560,7 +546,7 @@ impl<'a> RegExpValidator<'a> {
         }
     }
 
-    fn on_edge_assertion(&mut self, start: usize, end: usize, kind: EdgeKind) {
+    fn on_edge_assertion(&mut self, start: usize, end: usize, kind: AssertionKind) {
         if let Some(on_edge_assertion) = self._options.on_edge_assertion.as_mut() {
             on_edge_assertion(start, end, kind);
         }
@@ -570,7 +556,7 @@ impl<'a> RegExpValidator<'a> {
         &mut self,
         start: usize,
         end: usize,
-        kind: WordBoundaryKind,
+        kind: AssertionKind,
         negate: bool,
     ) {
         if let Some(on_word_boundary_assertion) = self._options.on_word_boundary_assertion.as_mut()
@@ -579,7 +565,7 @@ impl<'a> RegExpValidator<'a> {
         }
     }
 
-    fn on_any_character_set(&mut self, start: usize, end: usize, kind: AnyCharacterKind) {
+    fn on_any_character_set(&mut self, start: usize, end: usize, kind: CharacterKind) {
         if let Some(on_any_character_set) = self._options.on_any_character_set.as_mut() {
             on_any_character_set(start, end, kind);
         }
@@ -891,19 +877,19 @@ impl<'a> RegExpValidator<'a> {
         self._last_assertion_is_quantifiable = false;
 
         if self.eat(CIRCUMFLEX_ACCENT) {
-            self.on_edge_assertion(start, self.index(), EdgeKind::Start);
+            self.on_edge_assertion(start, self.index(), AssertionKind::Start);
             return Ok(true);
         }
         if self.eat(DOLLAR_SIGN) {
-            self.on_edge_assertion(start, self.index(), EdgeKind::End);
+            self.on_edge_assertion(start, self.index(), AssertionKind::End);
             return Ok(true);
         }
         if self.eat2(REVERSE_SOLIDUS, LATIN_CAPITAL_LETTER_B) {
-            self.on_word_boundary_assertion(start, self.index(), WordBoundaryKind::Word, true);
+            self.on_word_boundary_assertion(start, self.index(), AssertionKind::Word, true);
             return Ok(true);
         }
         if self.eat2(REVERSE_SOLIDUS, LATIN_SMALL_LETTER_B) {
-            self.on_word_boundary_assertion(start, self.index(), WordBoundaryKind::Word, false);
+            self.on_word_boundary_assertion(start, self.index(), AssertionKind::Word, false);
             return Ok(true);
         }
 
@@ -915,9 +901,9 @@ impl<'a> RegExpValidator<'a> {
                 negate
             } {
                 let kind = if lookbehind {
-                    LookaroundKind::Lookbehind
+                    AssertionKind::Lookbehind
                 } else {
-                    LookaroundKind::Lookahead
+                    AssertionKind::Lookahead
                 };
                 self.on_lookaround_assertion_enter(start, kind, negate);
                 self.consume_disjunction()?;
@@ -950,7 +936,7 @@ impl<'a> RegExpValidator<'a> {
 
     fn consume_dot(&mut self) -> bool {
         if self.eat(FULL_STOP) {
-            self.on_any_character_set(self.index() - 1, self.index(), AnyCharacterKind::Any);
+            self.on_any_character_set(self.index() - 1, self.index(), CharacterKind::Any);
             return true;
         }
         false

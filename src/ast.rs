@@ -1,16 +1,16 @@
 use std::mem;
 
 use id_arena::Id;
-use serde::{Serialize, Deserialize, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_bytes::ByteBuf;
 use wtf8::Wtf8;
 
 use crate::{
+    arena::AllArenas,
     validator::{
-        AnyCharacterKind, CapturingGroupKey, EdgeKind, EscapeCharacterKind, LookaroundKind,
-        UnicodePropertyCharacterKind, WordBoundaryKind, CapturingGroupKeyOwned,
+        AssertionKind, CapturingGroupKey, CapturingGroupKeyOwned, CharacterKind,
     },
-    CodePoint, arena::AllArenas,
+    CodePoint,
 };
 
 #[derive(Serialize)]
@@ -33,18 +33,14 @@ pub enum Node<'a> {
     ClassSubtraction(ClassSubtraction<'a>),
     ExpressionCharacterClass(ExpressionCharacterClass<'a>),
     Group(Group<'a>),
-    LookaroundAssertion(LookaroundAssertion<'a>),
+    Assertion(Assertion<'a>),
     Pattern(Pattern<'a>),
     Quantifier(Quantifier<'a>),
     RegExpLiteral(RegExpLiteral<'a>),
     StringAlternative(StringAlternative<'a>),
     Backreference(Backreference<'a>),
-    EdgeAssertion(EdgeAssertion<'a>),
-    WordBoundaryAssertion(WordBoundaryAssertion<'a>),
     Character(Character<'a>),
-    AnyCharacterSet(AnyCharacterSet<'a>),
-    EscapeCharacterSet(EscapeCharacterSet<'a>),
-    UnicodePropertyCharacterSet(UnicodePropertyCharacterSet<'a>),
+    CharacterSet(CharacterSet<'a>),
     Flags(Flags<'a>),
 }
 
@@ -59,18 +55,14 @@ enum NodeSerializable {
     ClassSubtraction(Box<ClassSubtractionSerializable>),
     ExpressionCharacterClass(Box<ExpressionCharacterClassSerializable>),
     Group(Box<GroupSerializable>),
-    LookaroundAssertion(Box<LookaroundAssertionSerializable>),
+    Assertion(Box<AssertionSerializable>),
     Pattern(Box<PatternSerializable>),
     Quantifier(Box<QuantifierSerializable>),
     RegExpLiteral(Box<RegExpLiteralSerializable>),
     StringAlternative(Box<StringAlternativeSerializable>),
     Backreference(Box<BackreferenceSerializable>),
-    EdgeAssertion(Box<EdgeAssertionSerializable>),
-    WordBoundaryAssertion(Box<WordBoundaryAssertionSerializable>),
     Character(Box<CharacterSerializable>),
-    AnyCharacterSet(Box<AnyCharacterSetSerializable>),
-    EscapeCharacterSet(Box<EscapeCharacterSetSerializable>),
-    UnicodePropertyCharacterSet(Box<UnicodePropertyCharacterSetSerializable>),
+    CharacterSet(Box<CharacterSetSerializable>),
     Flags(Box<FlagsSerializable>),
 }
 
@@ -92,18 +84,14 @@ pub enum NodeUnresolved {
     ClassSubtraction(Box<ClassSubtractionUnresolved>),
     ExpressionCharacterClass(Box<ExpressionCharacterClassUnresolved>),
     Group(Box<GroupUnresolved>),
-    LookaroundAssertion(Box<LookaroundAssertionUnresolved>),
+    Assertion(Box<AssertionUnresolved>),
     Pattern(Box<PatternUnresolved>),
     Quantifier(Box<QuantifierUnresolved>),
     RegExpLiteral(Box<RegExpLiteralUnresolved>),
     StringAlternative(Box<StringAlternativeUnresolved>),
     Backreference(Box<BackreferenceUnresolved>),
-    EdgeAssertion(Box<EdgeAssertionUnresolved>),
-    WordBoundaryAssertion(Box<WordBoundaryAssertionUnresolved>),
     Character(Box<CharacterUnresolved>),
-    AnyCharacterSet(Box<AnyCharacterSetUnresolved>),
-    EscapeCharacterSet(Box<EscapeCharacterSetUnresolved>),
-    UnicodePropertyCharacterSet(Box<UnicodePropertyCharacterSetUnresolved>),
+    CharacterSet(Box<CharacterSetUnresolved>),
     Flags(Box<FlagsUnresolved>),
 }
 
@@ -212,15 +200,13 @@ impl<'a> From<NodeBase<'a>> for NodeBaseSerializable {
 impl<'a> Serialize for NodeBase<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer {
+        S: serde::Serializer,
+    {
         NodeBaseSerializable::from(self.clone()).serialize(serializer)
     }
 }
 
-fn to_node_serializable<'a>(
-    id: Id<Node<'a>>,
-    arena: &AllArenas<'a>,
-) -> NodeSerializable {
+fn to_node_serializable<'a>(id: Id<Node<'a>>, arena: &AllArenas<'a>) -> NodeSerializable {
     arena.node(id).clone().into()
 }
 
@@ -252,16 +238,40 @@ impl<'a> From<RegExpLiteral<'a>> for RegExpLiteralSerializable {
 impl<'a> Serialize for RegExpLiteral<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer {
+        S: serde::Serializer,
+    {
         RegExpLiteralSerializable::from(self.clone()).serialize(serializer)
     }
 }
 
 fn deserialize_wtf_16<'de, D>(deserializer: D) -> Result<Vec<u16>, D::Error>
-where D: Deserializer<'de> {
+where
+    D: Deserializer<'de>,
+{
     let bytes = ByteBuf::deserialize(deserializer)?.into_vec();
     let wtf8 = Wtf8::from_str(unsafe { mem::transmute(&*bytes) });
     Ok(wtf8.to_ill_formed_utf16().collect())
+}
+
+fn deserialize_possibly_infinity_usize<'de, D>(deserializer: D) -> Result<usize, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrUsize {
+        String(String),
+        Usize(usize),
+    }
+    let string_or_usize = StringOrUsize::deserialize(deserializer)?;
+    Ok(match string_or_usize {
+        StringOrUsize::String(value) => {
+            // TODO: should handle this better?
+            assert!(value == "$$Infinity");
+            usize::MAX
+        }
+        StringOrUsize::Usize(value) => value,
+    })
 }
 
 #[derive(Deserialize)]
@@ -293,7 +303,11 @@ impl<'a> From<Pattern<'a>> for PatternSerializable {
     fn from(value: Pattern<'a>) -> Self {
         Self {
             _base: value._base.clone().into(),
-            alternatives: value.alternatives.iter().map(|&id| to_node_serializable(id, value._base.arena())).collect(),
+            alternatives: value
+                .alternatives
+                .iter()
+                .map(|&id| to_node_serializable(id, value._base.arena()))
+                .collect(),
         }
     }
 }
@@ -301,7 +315,8 @@ impl<'a> From<Pattern<'a>> for PatternSerializable {
 impl<'a> Serialize for Pattern<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer {
+        S: serde::Serializer,
+    {
         PatternSerializable::from(self.clone()).serialize(serializer)
     }
 }
@@ -333,7 +348,11 @@ impl<'a> From<Alternative<'a>> for AlternativeSerializable {
     fn from(value: Alternative<'a>) -> Self {
         Self {
             _base: value._base.clone().into(),
-            elements: value.elements.iter().map(|&id| to_node_serializable(id, value._base.arena())).collect(),
+            elements: value
+                .elements
+                .iter()
+                .map(|&id| to_node_serializable(id, value._base.arena()))
+                .collect(),
         }
     }
 }
@@ -341,7 +360,8 @@ impl<'a> From<Alternative<'a>> for AlternativeSerializable {
 impl<'a> Serialize for Alternative<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer {
+        S: serde::Serializer,
+    {
         AlternativeSerializable::from(self.clone()).serialize(serializer)
     }
 }
@@ -373,7 +393,11 @@ impl<'a> From<Group<'a>> for GroupSerializable {
     fn from(value: Group<'a>) -> Self {
         Self {
             _base: value._base.clone().into(),
-            alternatives: value.alternatives.iter().map(|&id| to_node_serializable(id, value._base.arena())).collect(),
+            alternatives: value
+                .alternatives
+                .iter()
+                .map(|&id| to_node_serializable(id, value._base.arena()))
+                .collect(),
         }
     }
 }
@@ -381,7 +405,8 @@ impl<'a> From<Group<'a>> for GroupSerializable {
 impl<'a> Serialize for Group<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer {
+        S: serde::Serializer,
+    {
         GroupSerializable::from(self.clone()).serialize(serializer)
     }
 }
@@ -418,7 +443,11 @@ impl<'a> From<CapturingGroup<'a>> for CapturingGroupSerializable {
         Self {
             _base: value._base.clone().into(),
             name: value.name.map(ToOwned::to_owned),
-            alternatives: value.alternatives.iter().map(|&id| to_node_serializable(id, value._base.arena())).collect(),
+            alternatives: value
+                .alternatives
+                .iter()
+                .map(|&id| to_node_serializable(id, value._base.arena()))
+                .collect(),
             references: value.references.iter().copied().map(Into::into).collect(),
         }
     }
@@ -427,7 +456,8 @@ impl<'a> From<CapturingGroup<'a>> for CapturingGroupSerializable {
 impl<'a> Serialize for CapturingGroup<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer {
+        S: serde::Serializer,
+    {
         CapturingGroupSerializable::from(self.clone()).serialize(serializer)
     }
 }
@@ -445,51 +475,57 @@ pub struct CapturingGroupUnresolved {
 }
 
 #[derive(Clone)]
-pub struct LookaroundAssertion<'a> {
+pub struct Assertion<'a> {
     _base: NodeBase<'a>,
-    pub kind: LookaroundKind,
-    pub negate: bool,
-    pub alternatives: Vec<Id<Node<'a>> /*Alternative*/>,
+    pub kind: AssertionKind,
+    pub negate: Option<bool>,
+    pub alternatives: Option<Vec<Id<Node<'a>> /*Alternative*/>>,
 }
 
 #[derive(Serialize)]
-struct LookaroundAssertionSerializable {
+struct AssertionSerializable {
     #[serde(flatten)]
     _base: NodeBaseSerializable,
-    kind: LookaroundKind,
-    negate: bool,
-    alternatives: Vec<NodeSerializable>,
+    kind: AssertionKind,
+    negate: Option<bool>,
+    alternatives: Option<Vec<NodeSerializable>>,
 }
 
-impl<'a> From<LookaroundAssertion<'a>> for LookaroundAssertionSerializable {
-    fn from(value: LookaroundAssertion<'a>) -> Self {
+impl<'a> From<Assertion<'a>> for AssertionSerializable {
+    fn from(value: Assertion<'a>) -> Self {
         Self {
             _base: value._base.clone().into(),
             kind: value.kind,
             negate: value.negate,
-            alternatives: value.alternatives.iter().map(|&id| to_node_serializable(id, value._base.arena())).collect(),
+            alternatives: value.alternatives.map(|alternatives| {
+                alternatives
+                    .iter()
+                    .map(|&id| to_node_serializable(id, value._base.arena()))
+                    .collect()
+            }),
         }
     }
 }
 
-impl<'a> Serialize for LookaroundAssertion<'a> {
+impl<'a> Serialize for Assertion<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer {
-        LookaroundAssertionSerializable::from(self.clone()).serialize(serializer)
+        S: serde::Serializer,
+    {
+        AssertionSerializable::from(self.clone()).serialize(serializer)
     }
 }
 
 #[derive(Deserialize)]
-pub struct LookaroundAssertionUnresolved {
+pub struct AssertionUnresolved {
     pub parent: Option<String>,
     pub start: usize,
     pub end: usize,
     #[serde(deserialize_with = "deserialize_wtf_16")]
     pub raw: Vec<u16>,
-    pub kind: LookaroundKind,
-    pub negate: bool,
-    pub alternatives: Vec<NodeUnresolved>,
+    pub kind: AssertionKind,
+    pub negate: Option<bool>,
+    pub alternatives: Option<Vec<NodeUnresolved>>,
 }
 
 #[derive(Clone)]
@@ -526,7 +562,8 @@ impl<'a> From<Quantifier<'a>> for QuantifierSerializable {
 impl<'a> Serialize for Quantifier<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer {
+        S: serde::Serializer,
+    {
         QuantifierSerializable::from(self.clone()).serialize(serializer)
     }
 }
@@ -539,6 +576,7 @@ pub struct QuantifierUnresolved {
     #[serde(deserialize_with = "deserialize_wtf_16")]
     pub raw: Vec<u16>,
     min: usize,
+    #[serde(deserialize_with = "deserialize_possibly_infinity_usize")]
     max: usize,
     greedy: bool,
     element: NodeUnresolved,
@@ -567,7 +605,11 @@ impl<'a> From<CharacterClass<'a>> for CharacterClassSerializable {
             _base: value._base.clone().into(),
             unicode_sets: value.unicode_sets,
             negate: value.negate,
-            elements: value.elements.iter().map(|&id| to_node_serializable(id, value._base.arena())).collect(),
+            elements: value
+                .elements
+                .iter()
+                .map(|&id| to_node_serializable(id, value._base.arena()))
+                .collect(),
         }
     }
 }
@@ -575,7 +617,8 @@ impl<'a> From<CharacterClass<'a>> for CharacterClassSerializable {
 impl<'a> Serialize for CharacterClass<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer {
+        S: serde::Serializer,
+    {
         CharacterClassSerializable::from(self.clone()).serialize(serializer)
     }
 }
@@ -621,7 +664,8 @@ impl<'a> From<CharacterClassRange<'a>> for CharacterClassRangeSerializable {
 impl<'a> Serialize for CharacterClassRange<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer {
+        S: serde::Serializer,
+    {
         CharacterClassRangeSerializable::from(self.clone()).serialize(serializer)
     }
 }
@@ -638,227 +682,60 @@ pub struct CharacterClassRangeUnresolved {
 }
 
 #[derive(Clone)]
-pub struct EdgeAssertion<'a> {
+pub struct CharacterSet<'a> {
     _base: NodeBase<'a>,
-    pub kind: EdgeKind,
-}
-
-#[derive(Serialize)]
-struct EdgeAssertionSerializable {
-    #[serde(flatten)]
-    _base: NodeBaseSerializable,
-    kind: EdgeKind,
-}
-
-impl<'a> From<EdgeAssertion<'a>> for EdgeAssertionSerializable {
-    fn from(value: EdgeAssertion<'a>) -> Self {
-        Self {
-            _base: value._base.into(),
-            kind: value.kind,
-        }
-    }
-}
-
-impl<'a> Serialize for EdgeAssertion<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer {
-        EdgeAssertionSerializable::from(self.clone()).serialize(serializer)
-    }
-}
-
-#[derive(Deserialize)]
-pub struct EdgeAssertionUnresolved {
-    pub parent: Option<String>,
-    pub start: usize,
-    pub end: usize,
-    #[serde(deserialize_with = "deserialize_wtf_16")]
-    pub raw: Vec<u16>,
-    pub kind: EdgeKind,
-}
-
-#[derive(Clone)]
-pub struct WordBoundaryAssertion<'a> {
-    _base: NodeBase<'a>,
-    pub kind: WordBoundaryKind,
-    pub negate: bool,
-}
-
-#[derive(Serialize)]
-struct WordBoundaryAssertionSerializable {
-    #[serde(flatten)]
-    _base: NodeBaseSerializable,
-    kind: WordBoundaryKind,
-    negate: bool,
-}
-
-impl<'a> From<WordBoundaryAssertion<'a>> for WordBoundaryAssertionSerializable {
-    fn from(value: WordBoundaryAssertion<'a>) -> Self {
-        Self {
-            _base: value._base.into(),
-            kind: value.kind,
-            negate: value.negate,
-        }
-    }
-}
-
-impl<'a> Serialize for WordBoundaryAssertion<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer {
-        WordBoundaryAssertionSerializable::from(self.clone()).serialize(serializer)
-    }
-}
-
-#[derive(Deserialize)]
-pub struct WordBoundaryAssertionUnresolved {
-    pub parent: Option<String>,
-    pub start: usize,
-    pub end: usize,
-    #[serde(deserialize_with = "deserialize_wtf_16")]
-    pub raw: Vec<u16>,
-    pub kind: WordBoundaryKind,
-    pub negate: bool,
-}
-
-#[derive(Clone)]
-pub struct AnyCharacterSet<'a> {
-    _base: NodeBase<'a>,
-    pub kind: AnyCharacterKind,
-}
-
-#[derive(Serialize)]
-struct AnyCharacterSetSerializable {
-    #[serde(flatten)]
-    _base: NodeBaseSerializable,
-    kind: AnyCharacterKind,
-}
-
-impl<'a> From<AnyCharacterSet<'a>> for AnyCharacterSetSerializable {
-    fn from(value: AnyCharacterSet<'a>) -> Self {
-        Self {
-            _base: value._base.into(),
-            kind: value.kind,
-        }
-    }
-}
-
-impl<'a> Serialize for AnyCharacterSet<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer {
-        AnyCharacterSetSerializable::from(self.clone()).serialize(serializer)
-    }
-}
-
-#[derive(Deserialize)]
-pub struct AnyCharacterSetUnresolved {
-    pub parent: Option<String>,
-    pub start: usize,
-    pub end: usize,
-    #[serde(deserialize_with = "deserialize_wtf_16")]
-    pub raw: Vec<u16>,
-    pub kind: AnyCharacterKind,
-}
-
-#[derive(Clone)]
-pub struct EscapeCharacterSet<'a> {
-    _base: NodeBase<'a>,
-    pub kind: EscapeCharacterKind,
-    pub negate: bool,
-}
-
-#[derive(Serialize)]
-struct EscapeCharacterSetSerializable {
-    #[serde(flatten)]
-    _base: NodeBaseSerializable,
-    kind: EscapeCharacterKind,
-    negate: bool,
-}
-
-impl<'a> From<EscapeCharacterSet<'a>> for EscapeCharacterSetSerializable {
-    fn from(value: EscapeCharacterSet<'a>) -> Self {
-        Self {
-            _base: value._base.into(),
-            kind: value.kind,
-            negate: value.negate,
-        }
-    }
-}
-
-impl<'a> Serialize for EscapeCharacterSet<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer {
-        EscapeCharacterSetSerializable::from(self.clone()).serialize(serializer)
-    }
-}
-
-#[derive(Deserialize)]
-pub struct EscapeCharacterSetUnresolved {
-    pub parent: Option<String>,
-    pub start: usize,
-    pub end: usize,
-    #[serde(deserialize_with = "deserialize_wtf_16")]
-    pub raw: Vec<u16>,
-    pub kind: EscapeCharacterKind,
-    pub negate: bool,
-}
-
-#[derive(Clone)]
-pub struct UnicodePropertyCharacterSet<'a> {
-    _base: NodeBase<'a>,
-    pub kind: UnicodePropertyCharacterKind,
-    pub strings: bool,
-    pub key: &'a str,
+    pub kind: CharacterKind,
+    pub strings: Option<bool>,
+    pub key: Option<&'a str>,
     pub value: Option<&'a str>,
-    pub negate: bool,
+    pub negate: Option<bool>,
 }
 
 #[derive(Serialize)]
-struct UnicodePropertyCharacterSetSerializable {
+struct CharacterSetSerializable {
     #[serde(flatten)]
     _base: NodeBaseSerializable,
-    kind: UnicodePropertyCharacterKind,
-    strings: bool,
-    key: String,
+    kind: CharacterKind,
+    strings: Option<bool>,
+    key: Option<String>,
     value: Option<String>,
-    negate: bool,
+    negate: Option<bool>,
 }
 
-impl<'a> From<UnicodePropertyCharacterSet<'a>> for UnicodePropertyCharacterSetSerializable {
-    fn from(value: UnicodePropertyCharacterSet<'a>) -> Self {
+impl<'a> From<CharacterSet<'a>> for CharacterSetSerializable {
+    fn from(value: CharacterSet<'a>) -> Self {
         Self {
             _base: value._base.into(),
             kind: value.kind,
             strings: value.strings,
-            key: value.key.to_owned(),
+            key: value.key.map(ToOwned::to_owned),
             value: value.value.map(ToOwned::to_owned),
             negate: value.negate,
         }
     }
 }
 
-impl<'a> Serialize for UnicodePropertyCharacterSet<'a> {
+impl<'a> Serialize for CharacterSet<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer {
-        UnicodePropertyCharacterSetSerializable::from(self.clone()).serialize(serializer)
+        S: serde::Serializer,
+    {
+        CharacterSetSerializable::from(self.clone()).serialize(serializer)
     }
 }
 
 #[derive(Deserialize)]
-pub struct UnicodePropertyCharacterSetUnresolved {
+pub struct CharacterSetUnresolved {
     pub parent: Option<String>,
     pub start: usize,
     pub end: usize,
     #[serde(deserialize_with = "deserialize_wtf_16")]
     pub raw: Vec<u16>,
-    pub kind: UnicodePropertyCharacterKind,
-    pub strings: bool,
-    pub key: String,
+    pub kind: CharacterKind,
+    pub strings: Option<bool>,
+    pub key: Option<String>,
     pub value: Option<String>,
-    pub negate: bool,
+    pub negate: Option<bool>,
 }
 
 #[derive(Clone)]
@@ -889,7 +766,8 @@ impl<'a> From<ExpressionCharacterClass<'a>> for ExpressionCharacterClassSerializ
 impl<'a> Serialize for ExpressionCharacterClass<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer {
+        S: serde::Serializer,
+    {
         ExpressionCharacterClassSerializable::from(self.clone()).serialize(serializer)
     }
 }
@@ -933,7 +811,8 @@ impl<'a> From<ClassIntersection<'a>> for ClassIntersectionSerializable {
 impl<'a> Serialize for ClassIntersection<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer {
+        S: serde::Serializer,
+    {
         ClassIntersectionSerializable::from(self.clone()).serialize(serializer)
     }
 }
@@ -977,7 +856,8 @@ impl<'a> From<ClassSubtraction<'a>> for ClassSubtractionSerializable {
 impl<'a> Serialize for ClassSubtraction<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer {
+        S: serde::Serializer,
+    {
         ClassSubtractionSerializable::from(self.clone()).serialize(serializer)
     }
 }
@@ -1010,7 +890,11 @@ impl<'a> From<ClassStringDisjunction<'a>> for ClassStringDisjunctionSerializable
     fn from(value: ClassStringDisjunction<'a>) -> Self {
         Self {
             _base: value._base.clone().into(),
-            alternatives: value.alternatives.iter().map(|&id| to_node_serializable(id, value._base.arena())).collect(),
+            alternatives: value
+                .alternatives
+                .iter()
+                .map(|&id| to_node_serializable(id, value._base.arena()))
+                .collect(),
         }
     }
 }
@@ -1018,7 +902,8 @@ impl<'a> From<ClassStringDisjunction<'a>> for ClassStringDisjunctionSerializable
 impl<'a> Serialize for ClassStringDisjunction<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer {
+        S: serde::Serializer,
+    {
         ClassStringDisjunctionSerializable::from(self.clone()).serialize(serializer)
     }
 }
@@ -1050,7 +935,11 @@ impl<'a> From<StringAlternative<'a>> for StringAlternativeSerializable {
     fn from(value: StringAlternative<'a>) -> Self {
         Self {
             _base: value._base.clone().into(),
-            elements: value.elements.iter().map(|&id| to_node_serializable(id, value._base.arena())).collect(),
+            elements: value
+                .elements
+                .iter()
+                .map(|&id| to_node_serializable(id, value._base.arena()))
+                .collect(),
         }
     }
 }
@@ -1058,7 +947,8 @@ impl<'a> From<StringAlternative<'a>> for StringAlternativeSerializable {
 impl<'a> Serialize for StringAlternative<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer {
+        S: serde::Serializer,
+    {
         StringAlternativeSerializable::from(self.clone()).serialize(serializer)
     }
 }
@@ -1098,7 +988,8 @@ impl<'a> From<Character<'a>> for CharacterSerializable {
 impl<'a> Serialize for Character<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer {
+        S: serde::Serializer,
+    {
         CharacterSerializable::from(self.clone()).serialize(serializer)
     }
 }
@@ -1141,7 +1032,8 @@ impl<'a> From<Backreference<'a>> for BackreferenceSerializable {
 impl<'a> Serialize for Backreference<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer {
+        S: serde::Serializer,
+    {
         BackreferenceSerializable::from(self.clone()).serialize(serializer)
     }
 }
@@ -1204,7 +1096,8 @@ impl<'a> From<Flags<'a>> for FlagsSerializable {
 impl<'a> Serialize for Flags<'a> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer {
+        S: serde::Serializer,
+    {
         FlagsSerializable::from(self.clone()).serialize(serializer)
     }
 }
