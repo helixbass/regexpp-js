@@ -181,6 +181,7 @@ pub enum CapturingGroupKey<'a> {
 }
 
 #[derive(Serialize, Deserialize)]
+#[serde(untagged)]
 pub enum CapturingGroupKeyOwned {
     Index(usize),
     Name(String),

@@ -8,9 +8,9 @@ use std::{
 
 use itertools::{Either, Itertools};
 use once_cell::sync::Lazy;
-use serde::{Deserialize, Deserializer};
+use serde::Deserialize;
 
-use crate::{ecma_versions::EcmaVersion, RegExpSyntaxError, ast::NodeUnresolved};
+use crate::{ast::NodeUnresolved, ecma_versions::EcmaVersion, RegExpSyntaxError};
 
 pub type FixtureData = HashMap<PathBuf, FixtureDataValue>;
 
@@ -20,18 +20,11 @@ pub struct FixtureDataValue {
     pub patterns: HashMap<String, AstOrError>,
 }
 
-fn deserialize_ecma_version<'de, D>(deserializer: D) -> Result<EcmaVersion, D::Error>
-    where D: Deserializer<'de> {
-    let ecma_version = u32::deserialize(deserializer)?;
-    EcmaVersion::try_from(ecma_version).map_err(serde::de::Error::custom)
-}
-
 #[derive(Copy, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FixtureDataOptions {
-    pub strict: bool,
-    #[serde(deserialize_with = "deserialize_ecma_version")]
-    pub ecma_version: EcmaVersion,
+    pub strict: Option<bool>,
+    pub ecma_version: Option<EcmaVersion>,
 }
 
 #[derive(Deserialize)]
@@ -51,7 +44,8 @@ pub static FIXTURES_DATA: Lazy<FixtureData> = Lazy::new(|| {
             println!("deserializing {filename:#?}");
             (
                 filename.clone(),
-                serde_json::from_str::<FixtureDataValue>(&fs::read_to_string(filename).unwrap()).unwrap(),
+                serde_json::from_str::<FixtureDataValue>(&fs::read_to_string(filename).unwrap())
+                    .unwrap(),
             )
         })
         .collect()

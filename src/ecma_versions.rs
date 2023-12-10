@@ -1,3 +1,5 @@
+use serde::Deserialize;
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum EcmaVersion {
     _5,
@@ -33,5 +35,15 @@ impl TryFrom<u32> for EcmaVersion {
         })
     }
 }
+
+impl<'de> Deserialize<'de> for EcmaVersion {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de> {
+        let ecma_version = u32::deserialize(deserializer)?;
+        EcmaVersion::try_from(ecma_version).map_err(serde::de::Error::custom)
+    }
+}
+
 
 pub const LATEST_ECMA_VERSION: EcmaVersion = EcmaVersion::_2024;
