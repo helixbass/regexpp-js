@@ -154,36 +154,36 @@ pub struct RegExpFlags {
     pub unicode_sets: bool,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum LookaroundKind {
     Lookahead,
     Lookbehind,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EdgeKind {
     End,
     Start,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WordBoundaryKind {
     Word,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AnyCharacterKind {
     Any,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EscapeCharacterKind {
     Digit,
     Space,
     Word,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum UnicodePropertyCharacterKind {
     Property,
 }
@@ -194,7 +194,7 @@ pub enum CapturingGroupKey<'a> {
     Name(&'a str),
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub enum CapturingGroupKeyOwned {
     Index(usize),
     Name(String),

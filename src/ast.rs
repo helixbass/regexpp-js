@@ -1,5 +1,9 @@
+use std::mem;
+
 use id_arena::Id;
-use serde::Serialize;
+use serde::{Serialize, Deserialize, Deserializer};
+use serde_bytes::ByteBuf;
+use wtf8::Wtf8;
 
 use crate::{
     validator::{
@@ -76,6 +80,33 @@ impl<'a> From<Node<'a>> for NodeSerializable {
     }
 }
 
+#[derive(Deserialize)]
+#[serde(tag = "type")]
+pub enum NodeUnresolved {
+    Alternative(Box<AlternativeUnresolved>),
+    CapturingGroup(Box<CapturingGroupUnresolved>),
+    CharacterClass(Box<CharacterClassUnresolved>),
+    CharacterClassRange(Box<CharacterClassRangeUnresolved>),
+    ClassIntersection(Box<ClassIntersectionUnresolved>),
+    ClassStringDisjunction(Box<ClassStringDisjunctionUnresolved>),
+    ClassSubtraction(Box<ClassSubtractionUnresolved>),
+    ExpressionCharacterClass(Box<ExpressionCharacterClassUnresolved>),
+    Group(Box<GroupUnresolved>),
+    LookaroundAssertion(Box<LookaroundAssertionUnresolved>),
+    Pattern(Box<PatternUnresolved>),
+    Quantifier(Box<QuantifierUnresolved>),
+    RegExpLiteral(Box<RegExpLiteralUnresolved>),
+    StringAlternative(Box<StringAlternativeUnresolved>),
+    Backreference(Box<BackreferenceUnresolved>),
+    EdgeAssertion(Box<EdgeAssertionUnresolved>),
+    WordBoundaryAssertion(Box<WordBoundaryAssertionUnresolved>),
+    Character(Box<CharacterUnresolved>),
+    AnyCharacterSet(Box<AnyCharacterSetUnresolved>),
+    EscapeCharacterSet(Box<EscapeCharacterSetUnresolved>),
+    UnicodePropertyCharacterSet(Box<UnicodePropertyCharacterSetUnresolved>),
+    Flags(Box<FlagsUnresolved>),
+}
+
 pub trait NodeInterface<'a> {
     fn set_arena_id(&mut self, id: Id<Node<'a>>);
     fn arena(&self) -> &AllArenas<'a>;
@@ -83,7 +114,7 @@ pub trait NodeInterface<'a> {
     fn parent(&self) -> Id<Node<'a>>;
     fn start(&self) -> usize;
     fn end(&self) -> usize;
-    fn raw(&self) -> &'a str;
+    fn raw(&self) -> &'a [u16];
 }
 
 impl<'a> NodeInterface<'a> for Node<'a> {
@@ -111,7 +142,7 @@ impl<'a> NodeInterface<'a> for Node<'a> {
         todo!()
     }
 
-    fn raw(&self) -> &'a str {
+    fn raw(&self) -> &'a [u16] {
         todo!()
     }
 }
@@ -124,7 +155,7 @@ struct NodeBase<'a> {
     parent: Option<Id<Node<'a>>>,
     start: usize,
     end: usize,
-    raw: &'a str,
+    raw: &'a [u16],
 }
 
 impl<'a> NodeInterface<'a> for NodeBase<'a> {
@@ -152,7 +183,7 @@ impl<'a> NodeInterface<'a> for NodeBase<'a> {
         self.end
     }
 
-    fn raw(&self) -> &'a str {
+    fn raw(&self) -> &'a [u16] {
         self.raw
     }
 }
@@ -163,7 +194,7 @@ struct NodeBaseSerializable {
     parent: Option<IdSerializable>,
     start: usize,
     end: usize,
-    raw: String,
+    raw: Vec<u16>,
 }
 
 impl<'a> From<NodeBase<'a>> for NodeBaseSerializable {
@@ -196,8 +227,8 @@ fn to_node_serializable<'a>(
 #[derive(Clone)]
 pub struct RegExpLiteral<'a> {
     _base: NodeBase<'a>,
-    pattern: Id<Node<'a>>, /*Pattern*/
-    flags: Id<Node<'a>>,   /*Flags*/
+    pub pattern: Id<Node<'a>>, /*Pattern*/
+    pub flags: Id<Node<'a>>,   /*Flags*/
 }
 
 #[derive(Serialize)]
@@ -226,10 +257,29 @@ impl<'a> Serialize for RegExpLiteral<'a> {
     }
 }
 
+fn deserialize_wtf_16<'de, D>(deserializer: D) -> Result<Vec<u16>, D::Error>
+where D: Deserializer<'de> {
+    let bytes = ByteBuf::deserialize(deserializer)?.into_vec();
+    let wtf8 = Wtf8::from_str(unsafe { mem::transmute(&*bytes) });
+    Ok(wtf8.to_ill_formed_utf16().collect())
+}
+
+#[derive(Deserialize)]
+pub struct RegExpLiteralUnresolved {
+    pub parent: Option<String>,
+    pub start: usize,
+    pub end: usize,
+    // TODO: Encapsulate in an eg Wtf16 type?
+    #[serde(deserialize_with = "deserialize_wtf_16")]
+    pub raw: Vec<u16>,
+    pub pattern: NodeUnresolved,
+    pub flags: NodeUnresolved,
+}
+
 #[derive(Clone)]
 pub struct Pattern<'a> {
     _base: NodeBase<'a>,
-    alternatives: Vec<Id<Node<'a>> /*Alternative*/>,
+    pub alternatives: Vec<Id<Node<'a>> /*Alternative*/>,
 }
 
 #[derive(Serialize)]
@@ -256,10 +306,20 @@ impl<'a> Serialize for Pattern<'a> {
     }
 }
 
+#[derive(Deserialize)]
+pub struct PatternUnresolved {
+    pub parent: Option<String>,
+    pub start: usize,
+    pub end: usize,
+    #[serde(deserialize_with = "deserialize_wtf_16")]
+    pub raw: Vec<u16>,
+    pub alternatives: Vec<NodeUnresolved>,
+}
+
 #[derive(Clone)]
 pub struct Alternative<'a> {
     _base: NodeBase<'a>,
-    elements: Vec<Id<Node<'a>> /*Element*/>,
+    pub elements: Vec<Id<Node<'a>> /*Element*/>,
 }
 
 #[derive(Serialize)]
@@ -286,10 +346,20 @@ impl<'a> Serialize for Alternative<'a> {
     }
 }
 
+#[derive(Deserialize)]
+pub struct AlternativeUnresolved {
+    pub parent: Option<String>,
+    pub start: usize,
+    pub end: usize,
+    #[serde(deserialize_with = "deserialize_wtf_16")]
+    pub raw: Vec<u16>,
+    pub elements: Vec<NodeUnresolved>,
+}
+
 #[derive(Clone)]
 pub struct Group<'a> {
     _base: NodeBase<'a>,
-    alternatives: Vec<Id<Node<'a>> /*Alternative*/>,
+    pub alternatives: Vec<Id<Node<'a>> /*Alternative*/>,
 }
 
 #[derive(Serialize)]
@@ -316,12 +386,22 @@ impl<'a> Serialize for Group<'a> {
     }
 }
 
+#[derive(Deserialize)]
+pub struct GroupUnresolved {
+    pub parent: Option<String>,
+    pub start: usize,
+    pub end: usize,
+    #[serde(deserialize_with = "deserialize_wtf_16")]
+    pub raw: Vec<u16>,
+    pub alternatives: Vec<NodeUnresolved>,
+}
+
 #[derive(Clone)]
 pub struct CapturingGroup<'a> {
     _base: NodeBase<'a>,
-    name: Option<&'a str>,
-    alternatives: Vec<Id<Node<'a>> /*Alternative*/>,
-    references: Vec<Id<Node<'a>> /*Backreference*/>,
+    pub name: Option<&'a str>,
+    pub alternatives: Vec<Id<Node<'a>> /*Alternative*/>,
+    pub references: Vec<Id<Node<'a>> /*Backreference*/>,
 }
 
 #[derive(Serialize)]
@@ -352,12 +432,24 @@ impl<'a> Serialize for CapturingGroup<'a> {
     }
 }
 
+#[derive(Deserialize)]
+pub struct CapturingGroupUnresolved {
+    pub parent: Option<String>,
+    pub start: usize,
+    pub end: usize,
+    #[serde(deserialize_with = "deserialize_wtf_16")]
+    pub raw: Vec<u16>,
+    pub name: Option<String>,
+    pub alternatives: Vec<NodeUnresolved>,
+    pub references: Vec<String>,
+}
+
 #[derive(Clone)]
 pub struct LookaroundAssertion<'a> {
     _base: NodeBase<'a>,
-    kind: LookaroundKind,
-    negate: bool,
-    alternatives: Vec<Id<Node<'a>> /*Alternative*/>,
+    pub kind: LookaroundKind,
+    pub negate: bool,
+    pub alternatives: Vec<Id<Node<'a>> /*Alternative*/>,
 }
 
 #[derive(Serialize)]
@@ -388,13 +480,25 @@ impl<'a> Serialize for LookaroundAssertion<'a> {
     }
 }
 
+#[derive(Deserialize)]
+pub struct LookaroundAssertionUnresolved {
+    pub parent: Option<String>,
+    pub start: usize,
+    pub end: usize,
+    #[serde(deserialize_with = "deserialize_wtf_16")]
+    pub raw: Vec<u16>,
+    pub kind: LookaroundKind,
+    pub negate: bool,
+    pub alternatives: Vec<NodeUnresolved>,
+}
+
 #[derive(Clone)]
 pub struct Quantifier<'a> {
     _base: NodeBase<'a>,
-    min: usize,
-    max: usize,
-    greedy: bool,
-    element: Id<Node<'a> /*QuantifiableElement*/>,
+    pub min: usize,
+    pub max: usize,
+    pub greedy: bool,
+    pub element: Id<Node<'a> /*QuantifiableElement*/>,
 }
 
 #[derive(Serialize)]
@@ -427,12 +531,25 @@ impl<'a> Serialize for Quantifier<'a> {
     }
 }
 
+#[derive(Deserialize)]
+pub struct QuantifierUnresolved {
+    pub parent: Option<String>,
+    pub start: usize,
+    pub end: usize,
+    #[serde(deserialize_with = "deserialize_wtf_16")]
+    pub raw: Vec<u16>,
+    min: usize,
+    max: usize,
+    greedy: bool,
+    element: NodeUnresolved,
+}
+
 #[derive(Clone)]
 pub struct CharacterClass<'a> {
     _base: NodeBase<'a>,
-    unicode_sets: bool,
-    negate: bool,
-    elements: Vec<Id<Node<'a>> /*CharacterClassElement*/>,
+    pub unicode_sets: bool,
+    pub negate: bool,
+    pub elements: Vec<Id<Node<'a>> /*CharacterClassElement*/>,
 }
 
 #[derive(Serialize)]
@@ -463,11 +580,24 @@ impl<'a> Serialize for CharacterClass<'a> {
     }
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CharacterClassUnresolved {
+    pub parent: Option<String>,
+    pub start: usize,
+    pub end: usize,
+    #[serde(deserialize_with = "deserialize_wtf_16")]
+    pub raw: Vec<u16>,
+    pub unicode_sets: bool,
+    pub negate: bool,
+    pub elements: Vec<NodeUnresolved>,
+}
+
 #[derive(Clone)]
 pub struct CharacterClassRange<'a> {
     _base: NodeBase<'a>,
-    min: Id<Node<'a> /*Character*/>,
-    max: Id<Node<'a> /*Character*/>,
+    pub min: Id<Node<'a> /*Character*/>,
+    pub max: Id<Node<'a> /*Character*/>,
 }
 
 #[derive(Serialize)]
@@ -496,10 +626,21 @@ impl<'a> Serialize for CharacterClassRange<'a> {
     }
 }
 
+#[derive(Deserialize)]
+pub struct CharacterClassRangeUnresolved {
+    pub parent: Option<String>,
+    pub start: usize,
+    pub end: usize,
+    #[serde(deserialize_with = "deserialize_wtf_16")]
+    pub raw: Vec<u16>,
+    pub min: NodeUnresolved,
+    pub max: NodeUnresolved,
+}
+
 #[derive(Clone)]
 pub struct EdgeAssertion<'a> {
     _base: NodeBase<'a>,
-    kind: EdgeKind,
+    pub kind: EdgeKind,
 }
 
 #[derive(Serialize)]
@@ -526,11 +667,21 @@ impl<'a> Serialize for EdgeAssertion<'a> {
     }
 }
 
+#[derive(Deserialize)]
+pub struct EdgeAssertionUnresolved {
+    pub parent: Option<String>,
+    pub start: usize,
+    pub end: usize,
+    #[serde(deserialize_with = "deserialize_wtf_16")]
+    pub raw: Vec<u16>,
+    pub kind: EdgeKind,
+}
+
 #[derive(Clone)]
 pub struct WordBoundaryAssertion<'a> {
     _base: NodeBase<'a>,
-    kind: WordBoundaryKind,
-    negate: bool,
+    pub kind: WordBoundaryKind,
+    pub negate: bool,
 }
 
 #[derive(Serialize)]
@@ -559,10 +710,21 @@ impl<'a> Serialize for WordBoundaryAssertion<'a> {
     }
 }
 
+#[derive(Deserialize)]
+pub struct WordBoundaryAssertionUnresolved {
+    pub parent: Option<String>,
+    pub start: usize,
+    pub end: usize,
+    #[serde(deserialize_with = "deserialize_wtf_16")]
+    pub raw: Vec<u16>,
+    pub kind: WordBoundaryKind,
+    pub negate: bool,
+}
+
 #[derive(Clone)]
 pub struct AnyCharacterSet<'a> {
     _base: NodeBase<'a>,
-    kind: AnyCharacterKind,
+    pub kind: AnyCharacterKind,
 }
 
 #[derive(Serialize)]
@@ -589,11 +751,21 @@ impl<'a> Serialize for AnyCharacterSet<'a> {
     }
 }
 
+#[derive(Deserialize)]
+pub struct AnyCharacterSetUnresolved {
+    pub parent: Option<String>,
+    pub start: usize,
+    pub end: usize,
+    #[serde(deserialize_with = "deserialize_wtf_16")]
+    pub raw: Vec<u16>,
+    pub kind: AnyCharacterKind,
+}
+
 #[derive(Clone)]
 pub struct EscapeCharacterSet<'a> {
     _base: NodeBase<'a>,
-    kind: EscapeCharacterKind,
-    negate: bool,
+    pub kind: EscapeCharacterKind,
+    pub negate: bool,
 }
 
 #[derive(Serialize)]
@@ -622,14 +794,25 @@ impl<'a> Serialize for EscapeCharacterSet<'a> {
     }
 }
 
+#[derive(Deserialize)]
+pub struct EscapeCharacterSetUnresolved {
+    pub parent: Option<String>,
+    pub start: usize,
+    pub end: usize,
+    #[serde(deserialize_with = "deserialize_wtf_16")]
+    pub raw: Vec<u16>,
+    pub kind: EscapeCharacterKind,
+    pub negate: bool,
+}
+
 #[derive(Clone)]
 pub struct UnicodePropertyCharacterSet<'a> {
     _base: NodeBase<'a>,
-    kind: UnicodePropertyCharacterKind,
-    strings: bool,
-    key: &'a str,
-    value: Option<&'a str>,
-    negate: bool,
+    pub kind: UnicodePropertyCharacterKind,
+    pub strings: bool,
+    pub key: &'a str,
+    pub value: Option<&'a str>,
+    pub negate: bool,
 }
 
 #[derive(Serialize)]
@@ -664,11 +847,25 @@ impl<'a> Serialize for UnicodePropertyCharacterSet<'a> {
     }
 }
 
+#[derive(Deserialize)]
+pub struct UnicodePropertyCharacterSetUnresolved {
+    pub parent: Option<String>,
+    pub start: usize,
+    pub end: usize,
+    #[serde(deserialize_with = "deserialize_wtf_16")]
+    pub raw: Vec<u16>,
+    pub kind: UnicodePropertyCharacterKind,
+    pub strings: bool,
+    pub key: String,
+    pub value: Option<String>,
+    pub negate: bool,
+}
+
 #[derive(Clone)]
 pub struct ExpressionCharacterClass<'a> {
     _base: NodeBase<'a>,
-    negate: bool,
-    expression: Id<Node<'a> /*ClassIntersection | ClassSubtraction*/>,
+    pub negate: bool,
+    pub expression: Id<Node<'a> /*ClassIntersection | ClassSubtraction*/>,
 }
 
 #[derive(Serialize)]
@@ -697,11 +894,22 @@ impl<'a> Serialize for ExpressionCharacterClass<'a> {
     }
 }
 
+#[derive(Deserialize)]
+pub struct ExpressionCharacterClassUnresolved {
+    pub parent: Option<String>,
+    pub start: usize,
+    pub end: usize,
+    #[serde(deserialize_with = "deserialize_wtf_16")]
+    pub raw: Vec<u16>,
+    pub negate: bool,
+    pub expression: NodeUnresolved,
+}
+
 #[derive(Clone)]
 pub struct ClassIntersection<'a> {
     _base: NodeBase<'a>,
-    left: Id<Node<'a> /*ClassIntersection | ClassSetOperand*/>,
-    right: Id<Node<'a> /*ClassSetOperand*/>,
+    pub left: Id<Node<'a> /*ClassIntersection | ClassSetOperand*/>,
+    pub right: Id<Node<'a> /*ClassSetOperand*/>,
 }
 
 #[derive(Serialize)]
@@ -730,11 +938,22 @@ impl<'a> Serialize for ClassIntersection<'a> {
     }
 }
 
+#[derive(Deserialize)]
+pub struct ClassIntersectionUnresolved {
+    pub parent: Option<String>,
+    pub start: usize,
+    pub end: usize,
+    #[serde(deserialize_with = "deserialize_wtf_16")]
+    pub raw: Vec<u16>,
+    pub left: NodeUnresolved,
+    pub right: NodeUnresolved,
+}
+
 #[derive(Clone)]
 pub struct ClassSubtraction<'a> {
     _base: NodeBase<'a>,
-    left: Id<Node<'a> /*ClassSetOperand | ClassSubtraction*/>,
-    right: Id<Node<'a> /*ClassSetOperand*/>,
+    pub left: Id<Node<'a> /*ClassSetOperand | ClassSubtraction*/>,
+    pub right: Id<Node<'a> /*ClassSetOperand*/>,
 }
 
 #[derive(Serialize)]
@@ -763,10 +982,21 @@ impl<'a> Serialize for ClassSubtraction<'a> {
     }
 }
 
+#[derive(Deserialize)]
+pub struct ClassSubtractionUnresolved {
+    pub parent: Option<String>,
+    pub start: usize,
+    pub end: usize,
+    #[serde(deserialize_with = "deserialize_wtf_16")]
+    pub raw: Vec<u16>,
+    pub left: NodeUnresolved,
+    pub right: NodeUnresolved,
+}
+
 #[derive(Clone)]
 pub struct ClassStringDisjunction<'a> {
     _base: NodeBase<'a>,
-    alternatives: Vec<Id<Node<'a>> /*StringAlternative*/>,
+    pub alternatives: Vec<Id<Node<'a>> /*StringAlternative*/>,
 }
 
 #[derive(Serialize)]
@@ -793,10 +1023,20 @@ impl<'a> Serialize for ClassStringDisjunction<'a> {
     }
 }
 
+#[derive(Deserialize)]
+pub struct ClassStringDisjunctionUnresolved {
+    pub parent: Option<String>,
+    pub start: usize,
+    pub end: usize,
+    #[serde(deserialize_with = "deserialize_wtf_16")]
+    pub raw: Vec<u16>,
+    pub alternatives: Vec<NodeUnresolved>,
+}
+
 #[derive(Clone)]
 pub struct StringAlternative<'a> {
     _base: NodeBase<'a>,
-    elements: Vec<Id<Node<'a>> /*Character*/>,
+    pub elements: Vec<Id<Node<'a>> /*Character*/>,
 }
 
 #[derive(Serialize)]
@@ -823,10 +1063,20 @@ impl<'a> Serialize for StringAlternative<'a> {
     }
 }
 
+#[derive(Deserialize)]
+pub struct StringAlternativeUnresolved {
+    pub parent: Option<String>,
+    pub start: usize,
+    pub end: usize,
+    #[serde(deserialize_with = "deserialize_wtf_16")]
+    pub raw: Vec<u16>,
+    pub elements: Vec<NodeUnresolved>,
+}
+
 #[derive(Clone)]
 pub struct Character<'a> {
     _base: NodeBase<'a>,
-    value: CodePoint,
+    pub value: CodePoint,
 }
 
 #[derive(Serialize)]
@@ -853,11 +1103,21 @@ impl<'a> Serialize for Character<'a> {
     }
 }
 
+#[derive(Deserialize)]
+pub struct CharacterUnresolved {
+    pub parent: Option<String>,
+    pub start: usize,
+    pub end: usize,
+    #[serde(deserialize_with = "deserialize_wtf_16")]
+    pub raw: Vec<u16>,
+    pub value: CodePoint,
+}
+
 #[derive(Clone)]
 pub struct Backreference<'a> {
     _base: NodeBase<'a>,
-    ref_: CapturingGroupKey<'a>,
-    resolved: Id<Node<'a> /*CapturingGroup*/>,
+    pub ref_: CapturingGroupKey<'a>,
+    pub resolved: Id<Node<'a> /*CapturingGroup*/>,
 }
 
 #[derive(Serialize)]
@@ -886,17 +1146,29 @@ impl<'a> Serialize for Backreference<'a> {
     }
 }
 
+#[derive(Deserialize)]
+pub struct BackreferenceUnresolved {
+    pub parent: Option<String>,
+    pub start: usize,
+    pub end: usize,
+    #[serde(deserialize_with = "deserialize_wtf_16")]
+    pub raw: Vec<u16>,
+    #[serde(rename = "ref")]
+    pub ref_: CapturingGroupKeyOwned,
+    pub resolved: String,
+}
+
 #[derive(Clone)]
 pub struct Flags<'a> {
     _base: NodeBase<'a>,
-    dot_all: bool,
-    global: bool,
-    has_indices: bool,
-    ignore_case: bool,
-    multiline: bool,
-    sticky: bool,
-    unicode: bool,
-    unicode_sets: bool,
+    pub dot_all: bool,
+    pub global: bool,
+    pub has_indices: bool,
+    pub ignore_case: bool,
+    pub multiline: bool,
+    pub sticky: bool,
+    pub unicode: bool,
+    pub unicode_sets: bool,
 }
 
 #[derive(Serialize)]
@@ -935,4 +1207,22 @@ impl<'a> Serialize for Flags<'a> {
         S: serde::Serializer {
         FlagsSerializable::from(self.clone()).serialize(serializer)
     }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FlagsUnresolved {
+    pub parent: Option<String>,
+    pub start: usize,
+    pub end: usize,
+    #[serde(deserialize_with = "deserialize_wtf_16")]
+    pub raw: Vec<u16>,
+    pub dot_all: bool,
+    pub global: bool,
+    pub has_indices: bool,
+    pub ignore_case: bool,
+    pub multiline: bool,
+    pub sticky: bool,
+    pub unicode: bool,
+    pub unicode_sets: bool,
 }

@@ -55,7 +55,7 @@ impl Reader {
         (i < self._end).then(|| {
             let index = self.passed_index_to_internal_index(i);
             let possibly_first_half_of_surrogate_pair = self._s_between_start_and_end[index];
-            if !is_surrogate_code_point(possibly_first_half_of_surrogate_pair) {
+            if !self._use_unicode_impl || !is_surrogate_code_point(possibly_first_half_of_surrogate_pair) {
                 return possibly_first_half_of_surrogate_pair.into();
             }
             get_single_surrogate_pair_code_point(&self._s_between_start_and_end[index..=index + 1])
