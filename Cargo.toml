@@ -16,5 +16,5 @@ squalid = { git = "https://github.com/helixbass/squalid", rev = "ca9515c" }
 wtf8 = "0.1.0"
 
 [dev-dependencies]
-serde_json = "1.0.108"
+serde_json = { git = "https://github.com/helixbass/json", rev = "eb2cf6b" }
 speculoos = "0.11.0"
