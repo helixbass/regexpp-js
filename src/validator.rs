@@ -195,9 +195,9 @@ pub trait Options {
     fn on_alternative_leave(&self, start: usize, end: usize, index: usize) {}
     fn on_group_enter(&self, start: usize) {}
     fn on_group_leave(&self, start: usize, end: usize) {}
-    fn on_capturing_group_enter(&self, start: usize, TODO: Option<&str>) {}
-    fn on_capturing_group_leave(&self, start: usize, end: usize, TODO: Option<&str>) {}
-    fn on_quantifier(&self, start: usize, TODO: usize, a: usize, b: usize, c: bool) {}
+    fn on_capturing_group_enter(&self, start: usize, name: Option<&str>) {}
+    fn on_capturing_group_leave(&self, start: usize, end: usize, name: Option<&str>) {}
+    fn on_quantifier(&self, start: usize, end: usize, min: usize, max: usize, greedy: bool) {}
     fn on_lookaround_assertion_enter(&self, start: usize, kind: AssertionKind, negate: bool) {}
     fn on_lookaround_assertion_leave(&self, start: usize, end: usize, kind: AssertionKind, negate: bool) {}
     fn on_edge_assertion(&self, start: usize, end: usize, kind: AssertionKind) {}

@@ -68,6 +68,146 @@ impl Node {
             unicode_sets,
         })
     }
+
+    pub fn new_pattern(
+        parent: Option<Id<Node>>,
+        start: usize,
+        end: usize,
+        raw: Vec<u16>,
+        alternatives: Vec<Id<Node>>,
+    ) -> Self {
+        Self::Pattern(Pattern {
+            _base: NodeBase {
+                _arena_id: Default::default(),
+                parent,
+                start,
+                end,
+                raw,
+            },
+            alternatives,
+        })
+    }
+
+    pub fn new_alternative(
+        parent: Option<Id<Node>>,
+        start: usize,
+        end: usize,
+        raw: Vec<u16>,
+        elements: Vec<Id<Node>>,
+    ) -> Self {
+        Self::Alternative(Alternative {
+            _base: NodeBase {
+                _arena_id: Default::default(),
+                parent,
+                start,
+                end,
+                raw,
+            },
+            elements,
+        })
+    }
+
+    pub fn new_group(
+        parent: Option<Id<Node>>,
+        start: usize,
+        end: usize,
+        raw: Vec<u16>,
+        alternatives: Vec<Id<Node>>,
+    ) -> Self {
+        Self::Group(Group {
+            _base: NodeBase {
+                _arena_id: Default::default(),
+                parent,
+                start,
+                end,
+                raw,
+            },
+            alternatives,
+        })
+    }
+
+    pub fn new_capturing_group(
+        parent: Option<Id<Node>>,
+        start: usize,
+        end: usize,
+        raw: Vec<u16>,
+        name: Option<String>,
+        alternatives: Vec<Id<Node>>,
+        references: Vec<Id<Node>>,
+    ) -> Self {
+        Self::CapturingGroup(CapturingGroup {
+            _base: NodeBase {
+                _arena_id: Default::default(),
+                parent,
+                start,
+                end,
+                raw,
+            },
+            name,
+            alternatives,
+            references,
+        })
+    }
+
+    pub fn new_quantifier(
+        parent: Option<Id<Node>>,
+        start: usize,
+        end: usize,
+        raw: Vec<u16>,
+        min: usize,
+        max: usize,
+        greedy: bool,
+        element: Id<Node>,
+    ) -> Self {
+        Self::Quantifier(Quantifier {
+            _base: NodeBase {
+                _arena_id: Default::default(),
+                parent,
+                start,
+                end,
+                raw,
+            },
+            min,
+            max,
+            greedy,
+            element,
+        })
+    }
+
+    pub fn as_backreference(&self) -> &Backreference {
+        match self {
+            Self::Backreference(value) => value,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn as_backreference_mut(&mut self) -> &mut Backreference {
+        match self {
+            Self::Backreference(value) => value,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn as_capturing_group(&self) -> &CapturingGroup {
+        match self {
+            Self::CapturingGroup(value) => value,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn as_capturing_group_mut(&mut self) -> &mut CapturingGroup {
+        match self {
+            Self::CapturingGroup(value) => value,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn as_alternative_mut(&mut self) -> &mut Alternative {
+        match self {
+            Self::Alternative(value) => value,
+            _ => unreachable!(),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
@@ -96,10 +236,13 @@ pub enum NodeUnresolved {
 pub trait NodeInterface {
     fn set_arena_id(&mut self, id: Id<Node>);
     fn maybe_parent(&self) -> Option<Id<Node>>;
+    fn set_parent(&mut self, parent: Option<Id<Node>>);
     fn parent(&self) -> Id<Node>;
     fn start(&self) -> usize;
     fn end(&self) -> usize;
+    fn set_end(&mut self, end: usize);
     fn raw(&self) -> &[u16];
+    fn set_raw(&mut self, raw: Vec<u16>);
 }
 
 impl NodeInterface for Node {
@@ -108,6 +251,10 @@ impl NodeInterface for Node {
     }
 
     fn maybe_parent(&self) -> Option<Id<Node>> {
+        todo!()
+    }
+
+    fn set_parent(&mut self, parent: Option<Id<Node>>) {
         todo!()
     }
 
@@ -123,7 +270,15 @@ impl NodeInterface for Node {
         todo!()
     }
 
+    fn set_end(&mut self, end: usize) {
+        todo!()
+    }
+
     fn raw(&self) -> &[u16] {
+        todo!()
+    }
+
+    fn set_raw(&mut self, raw: Vec<u16>) {
         todo!()
     }
 }
@@ -248,6 +403,10 @@ impl NodeInterface for NodeBase {
         self.parent.unwrap()
     }
 
+    fn set_parent(&mut self, parent: Option<Id<Node>>) {
+        self.parent = parent;
+    }
+
     fn start(&self) -> usize {
         self.start
     }
@@ -256,8 +415,16 @@ impl NodeInterface for NodeBase {
         self.end
     }
 
+    fn set_end(&mut self, end: usize) {
+        self.end = end;
+    }
+
     fn raw(&self) -> &[u16] {
         &self.raw
+    }
+
+    fn set_raw(&mut self, raw: Vec<u16>) {
+        self.raw = raw;
     }
 }
 
