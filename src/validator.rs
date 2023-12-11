@@ -433,7 +433,7 @@ impl<'a> RegExpValidator<'a> {
         let mut dot_all = false;
         let mut has_indices = false;
         let mut unicode_sets = false;
-        for &flag in source {
+        for &flag in &source[start..end] {
             let flag: CodePoint = flag.into();
 
             if existing_flags.contains(&flag) {
