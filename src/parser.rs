@@ -6,11 +6,12 @@ use squalid::EverythingExt;
 
 use crate::{
     arena::AllArenas,
-    ast::{Flags, Node, NodeBase, NodeInterface, str_to_wtf_16, Wtf16},
+    ast::{Node, NodeInterface},
     ecma_versions::{EcmaVersion, LATEST_ECMA_VERSION},
     unicode::HYPHEN_MINUS,
     validator::{self, AssertionKind, CapturingGroupKey, CharacterKind, RegExpFlags},
     CodePoint, RegExpValidator, Result,
+    Wtf16,
 };
 
 #[derive(Copy, Clone, Default, Deserialize)]
@@ -18,6 +19,16 @@ use crate::{
 pub struct Options {
     strict: Option<bool>,
     ecma_version: Option<EcmaVersion>,
+}
+
+impl validator::Options for Options {
+    fn strict(&self) -> Option<bool> {
+        self.strict
+    }
+
+    fn ecma_version(&self) -> Option<EcmaVersion> {
+        self.ecma_version
+    }
 }
 
 fn is_class_set_operand(node: &Node) -> bool {

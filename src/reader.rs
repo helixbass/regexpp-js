@@ -1,4 +1,4 @@
-use crate::ast::Wtf16;
+use crate::Wtf16;
 
 pub type CodePoint = u32;
 

@@ -9,34 +9,8 @@ use wtf8::Wtf8;
 use crate::{
     arena::AllArenas,
     validator::{AssertionKind, CapturingGroupKey, CharacterKind},
-    CodePoint,
+    CodePoint, Wtf16,
 };
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct Wtf16(Vec<u16>);
-
-impl<'de> Deserialize<'de> for Wtf16 {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de> {
-        let bytes = ByteBuf::deserialize(deserializer)?.into_vec();
-        Ok(str_to_wtf_16(unsafe { mem::transmute(&*bytes) }))
-    }
-}
-
-impl ops::Deref for Wtf16 {
-    type Target = [u16];
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl From<&[u16]> for Wtf16 {
-    fn from(value: &[u16]) -> Self {
-        Self(value.to_owned())
-    }
-}
 
 #[derive(Clone)]
 pub enum Node {
@@ -1186,11 +1160,6 @@ pub struct RegExpLiteral {
     _base: NodeBase,
     pub pattern: Id<Node>, /*Pattern*/
     pub flags: Id<Node>,   /*Flags*/
-}
-
-pub fn str_to_wtf_16(value: &str) -> Wtf16 {
-    let wtf8 = Wtf8::from_str(value);
-    Wtf16(wtf8.to_ill_formed_utf16().collect())
 }
 
 fn deserialize_possibly_infinity_usize<'de, D>(deserializer: D) -> Result<usize, D::Error>

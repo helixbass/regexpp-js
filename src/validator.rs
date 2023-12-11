@@ -20,7 +20,7 @@ use crate::{
         REVERSE_SOLIDUS, RIGHT_CURLY_BRACKET, RIGHT_PARENTHESIS, RIGHT_SQUARE_BRACKET, SEMICOLON,
         SOLIDUS, TILDE, VERTICAL_LINE,
     },
-    EcmaVersion, Reader, RegExpSyntaxError, ast::Wtf16,
+    EcmaVersion, Reader, RegExpSyntaxError, Wtf16,
 };
 
 static SYNTAX_CHARACTER: Lazy<HashSet<CodePoint>> = Lazy::new(|| {
@@ -264,8 +264,8 @@ impl Options for NoopOptions {
 #[derive(Default, Deserialize)]
 #[serde(default, rename_all = "camelCase")]
 pub struct ValidatePatternFlags {
-    unicode: Option<bool>,
-    unicode_sets: Option<bool>,
+    pub unicode: Option<bool>,
+    pub unicode_sets: Option<bool>,
 }
 
 struct Mode {
@@ -282,7 +282,7 @@ struct RaiseContext {
     unicode_sets: Option<bool>,
 }
 
-fn bmp_char_to_utf_16(ch: char) -> u16 {
+pub fn bmp_char_to_utf_16(ch: char) -> u16 {
     let mut buffer = [0; 1];
     ch.encode_utf16(&mut buffer);
     buffer[0]
@@ -851,7 +851,7 @@ impl<'a> RegExpValidator<'a> {
         }
         Ok(self.consume_assertion()?
             && (!self._last_assertion_is_quantifiable || self.consume_optional_quantifier())
-            || self.consume_extended_atom() && self.consume_optional_quantifier())
+            || self.consume_extended_atom()? && self.consume_optional_quantifier())
     }
 
     fn consume_optional_quantifier(&self) -> bool {
@@ -947,7 +947,36 @@ impl<'a> RegExpValidator<'a> {
         unimplemented!()
     }
 
-    fn consume_extended_atom(&self) -> bool {
+    fn consume_extended_atom(&mut self) -> Result<bool, RegExpSyntaxError> {
+        Ok(self.consume_dot() ||
+            self.consume_reverse_solidus_atom_escape()? ||
+            self.consume_reverse_solidus_followed_by_c() ||
+            self.consume_character_class()?.is_some() ||
+            self.consume_uncapturing_group() ||
+            self.consume_capturing_group() ||
+            self.consume_invalid_braced_quantifier() ||
+            self.consume_extended_pattern_character()
+        )
+
+    }
+
+    fn consume_reverse_solidus_followed_by_c(&mut self) -> bool {
+        let start = self.index();
+        if self.current_code_point() == Some(REVERSE_SOLIDUS) &&
+            self.next_code_point() == Some(LATIN_SMALL_LETTER_C) {
+            self._last_int_value = self.current_code_point();
+            self.advance();
+            self.on_character(
+                start,
+                self.index(),
+                REVERSE_SOLIDUS,
+            );
+            return true;
+        }
+        false
+    }
+
+    fn consume_invalid_braced_quantifier(&self) -> bool {
         unimplemented!()
     }
 
@@ -960,6 +989,10 @@ impl<'a> RegExpValidator<'a> {
             return true;
         }
         false
+    }
+
+    fn consume_extended_pattern_character(&self) -> bool {
+        unimplemented!()
     }
 
     fn consume_atom_escape(&mut self) -> Result<bool, RegExpSyntaxError> {
@@ -1346,8 +1379,6 @@ mod tests {
     use serde_json::json;
     use speculoos::prelude::*;
 
-    use crate::ast::str_to_wtf_16;
-
     use super::*;
 
     fn validator<'a>() -> RegExpValidator<'a> {
@@ -1361,19 +1392,19 @@ mod tests {
         flags: ValidatePatternFlags,
     ) -> RegExpSyntaxError {
         validator()
-            .validate_pattern(&str_to_wtf_16(source), Some(start), Some(end), Some(flags))
+            .validate_pattern(&Wtf16::from(source), Some(start), Some(end), Some(flags))
             .expect_err("Should fail, but succeeded.")
     }
 
     fn get_error_for_flags(source: &str, start: usize, end: usize) -> RegExpSyntaxError {
         validator()
-            .validate_flags(&str_to_wtf_16(source), Some(start), Some(end))
+            .validate_flags(&Wtf16::from(source), Some(start), Some(end))
             .expect_err("Should fail, but succeeded.")
     }
 
     fn get_error_for_literal(source: &str, start: usize, end: usize) -> RegExpSyntaxError {
         validator()
-            .validate_literal(&str_to_wtf_16(source), Some(start), Some(end))
+            .validate_literal(&Wtf16::from(source), Some(start), Some(end))
             .expect_err("Should fail, but succeeded.")
     }
 
