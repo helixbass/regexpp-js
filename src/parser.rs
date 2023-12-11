@@ -239,13 +239,11 @@ impl<'a> validator::Options for RegExpParserState<'a> {
             .pop()
             .unwrap();
         assert!(
-            !matches!(
-                &*self._arena.node(element),
-                Node::Quantifier(_)
-            ) && !matches!(
-                &*self._arena.node(element),
-                Node::Assertion(element) if element.kind == AssertionKind::Lookahead,
-            )
+            !matches!(&*self._arena.node(element), Node::Quantifier(_))
+                && !matches!(
+                    &*self._arena.node(element),
+                    Node::Assertion(element) if element.kind == AssertionKind::Lookahead,
+                )
         );
 
         let node = Node::new_quantifier(
@@ -259,9 +257,102 @@ impl<'a> validator::Options for RegExpParserState<'a> {
             element,
         );
         let node = self._arena.alloc_node(node);
-        self._arena.node_mut(parent).as_alternative_mut().elements.push(node);
+        self._arena
+            .node_mut(parent)
+            .as_alternative_mut()
+            .elements
+            .push(node);
         self._arena.node_mut(element).set_parent(Some(node));
     }
+
+    fn on_lookaround_assertion_enter(&self, start: usize, kind: AssertionKind, negate: bool) {
+        let parent = self._node.borrow().unwrap();
+        assert!(matches!(&*self._arena.node(parent), Node::Alternative(_)));
+
+        *self._node.borrow_mut() = Some(self._arena.alloc_node(Node::new_assertion(
+            Some(parent),
+            start,
+            start,
+            Default::default(),
+            kind,
+            Some(negate),
+            Some(Default::default()),
+        )));
+        let node = self._node.borrow().unwrap();
+        self._arena
+            .node_mut(parent)
+            .as_alternative_mut()
+            .elements
+            .push(node);
+    }
+
+    fn on_lookaround_assertion_leave(
+        &self,
+        start: usize,
+        end: usize,
+        _kind: AssertionKind,
+        _negate: bool,
+    ) {
+        let node = self._node.borrow().unwrap();
+        assert!(matches!(
+            &*self._arena.node(node),
+            Node::Assertion(_) | Node::Alternative(_)
+        ));
+
+        self._arena.node_mut(node).thrush(|mut node| {
+            node.set_end(end);
+            node.set_raw(self.source[start..end].to_owned());
+        });
+        *self._node.borrow_mut() = self._arena.node(node).maybe_parent();
+    }
+
+    fn on_edge_assertion(&self, start: usize, end: usize, kind: AssertionKind) {
+        let parent = self._node.borrow().unwrap();
+        assert!(matches!(&*self._arena.node(parent), Node::Alternative(_)));
+
+        let node = self._arena.alloc_node(Node::new_assertion(
+            Some(parent),
+            start,
+            end,
+            self.source[start..end].to_owned(),
+            kind,
+            None,
+            None,
+        ));
+        self._arena
+            .node_mut(parent)
+            .as_alternative_mut()
+            .elements
+            .push(node);
+    }
+
+    fn on_word_boundary_assertion(
+        &self,
+        start: usize,
+        end: usize,
+        kind: AssertionKind,
+        negate: bool,
+    ) {
+        let parent = self._node.borrow().unwrap();
+        assert!(matches!(&*self._arena.node(parent), Node::Alternative(_)));
+
+        let node = self._arena.alloc_node(Node::new_assertion(
+            Some(parent),
+            start,
+            end,
+            self.source[start..end].to_owned(),
+            kind,
+            Some(negate),
+            None,
+        ));
+        self._arena
+            .node_mut(parent)
+            .as_alternative_mut()
+            .elements
+            .push(node);
+    }
+
+    fn on_any_character_set(&self, start: usize, end: usize, kind: validator::CharacterKind) {}
 
     fn on_literal_enter(&self, start: usize) {}
 
@@ -270,36 +361,6 @@ impl<'a> validator::Options for RegExpParserState<'a> {
     fn on_disjunction_enter(&self, start: usize) {}
 
     fn on_disjunction_leave(&self, start: usize, end: usize) {}
-
-    fn on_lookaround_assertion_enter(
-        &self,
-        start: usize,
-        kind: validator::AssertionKind,
-        negate: bool,
-    ) {
-    }
-
-    fn on_lookaround_assertion_leave(
-        &self,
-        start: usize,
-        end: usize,
-        kind: validator::AssertionKind,
-        negate: bool,
-    ) {
-    }
-
-    fn on_edge_assertion(&self, start: usize, end: usize, kind: validator::AssertionKind) {}
-
-    fn on_word_boundary_assertion(
-        &self,
-        start: usize,
-        end: usize,
-        kind: validator::AssertionKind,
-        negate: bool,
-    ) {
-    }
-
-    fn on_any_character_set(&self, start: usize, end: usize, kind: validator::CharacterKind) {}
 
     fn on_escape_character_set(
         &self,

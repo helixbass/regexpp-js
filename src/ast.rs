@@ -149,6 +149,7 @@ impl Node {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new_quantifier(
         parent: Option<Id<Node>>,
         start: usize,
@@ -171,6 +172,29 @@ impl Node {
             max,
             greedy,
             element,
+        })
+    }
+
+    pub fn new_assertion(
+        parent: Option<Id<Node>>,
+        start: usize,
+        end: usize,
+        raw: Vec<u16>,
+        kind: AssertionKind,
+        negate: Option<bool>,
+        alternatives: Option<Vec<Id<Node>>>,
+    ) -> Self {
+        Self::Assertion(Assertion {
+            _base: NodeBase {
+                _arena_id: Default::default(),
+                parent,
+                start,
+                end,
+                raw,
+            },
+            kind,
+            negate,
+            alternatives,
         })
     }
 
