@@ -10,21 +10,14 @@ use itertools::{Either, Itertools};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 
-use crate::{ast::NodeUnresolved, ecma_versions::EcmaVersion, RegExpSyntaxError};
+use crate::{ast::NodeUnresolved, RegExpSyntaxError, parser};
 
 pub type FixtureData = HashMap<PathBuf, FixtureDataValue>;
 
 #[derive(Deserialize)]
 pub struct FixtureDataValue {
-    pub options: FixtureDataOptions,
+    pub options: parser::Options,
     pub patterns: HashMap<String, AstOrError>,
-}
-
-#[derive(Copy, Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FixtureDataOptions {
-    pub strict: Option<bool>,
-    pub ecma_version: Option<EcmaVersion>,
 }
 
 #[derive(Deserialize)]
@@ -41,7 +34,6 @@ pub static FIXTURES_DATA: Lazy<FixtureData> = Lazy::new(|| {
     extract_fixture_files(&FIXTURES_ROOT)
         .into_iter()
         .map(|filename| {
-            println!("deserializing {filename:#?}");
             (
                 filename.clone(),
                 serde_json::from_str::<FixtureDataValue>(&fs::read_to_string(filename).unwrap())

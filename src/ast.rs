@@ -1,22 +1,20 @@
-use std::mem;
+use std::{collections::HashMap, mem};
 
 use id_arena::Id;
-use serde::{Deserialize, Deserializer, Serialize};
+use pathdiff::diff_paths;
+use serde::{Deserialize, Deserializer};
 use serde_bytes::ByteBuf;
 use wtf8::Wtf8;
 
 use crate::{
     arena::AllArenas,
-    validator::{
-        AssertionKind, CapturingGroupKey, CapturingGroupKeyOwned, CharacterKind,
-    },
+    validator::{AssertionKind, CapturingGroupKey, CapturingGroupKeyOwned, CharacterKind},
     CodePoint,
 };
 
-#[derive(Serialize)]
-struct IdSerializable(usize);
+struct IdUsize(usize);
 
-impl<'a> From<Id<Node<'a>>> for IdSerializable {
+impl<'a> From<Id<Node<'a>>> for IdUsize {
     fn from(value: Id<Node<'a>>) -> Self {
         Self(value.index())
     }
@@ -44,35 +42,7 @@ pub enum Node<'a> {
     Flags(Flags<'a>),
 }
 
-#[derive(Serialize)]
-enum NodeSerializable {
-    Alternative(Box<AlternativeSerializable>),
-    CapturingGroup(Box<CapturingGroupSerializable>),
-    CharacterClass(Box<CharacterClassSerializable>),
-    CharacterClassRange(Box<CharacterClassRangeSerializable>),
-    ClassIntersection(Box<ClassIntersectionSerializable>),
-    ClassStringDisjunction(Box<ClassStringDisjunctionSerializable>),
-    ClassSubtraction(Box<ClassSubtractionSerializable>),
-    ExpressionCharacterClass(Box<ExpressionCharacterClassSerializable>),
-    Group(Box<GroupSerializable>),
-    Assertion(Box<AssertionSerializable>),
-    Pattern(Box<PatternSerializable>),
-    Quantifier(Box<QuantifierSerializable>),
-    RegExpLiteral(Box<RegExpLiteralSerializable>),
-    StringAlternative(Box<StringAlternativeSerializable>),
-    Backreference(Box<BackreferenceSerializable>),
-    Character(Box<CharacterSerializable>),
-    CharacterSet(Box<CharacterSetSerializable>),
-    Flags(Box<FlagsSerializable>),
-}
-
-impl<'a> From<Node<'a>> for NodeSerializable {
-    fn from(value: Node<'a>) -> Self {
-        unimplemented!()
-    }
-}
-
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type")]
 pub enum NodeUnresolved {
     Alternative(Box<AlternativeUnresolved>),
@@ -135,6 +105,103 @@ impl<'a> NodeInterface<'a> for Node<'a> {
     }
 }
 
+fn resolve_location_vec<'a>(
+    arena: &AllArenas<'a>,
+    nodes: &[Id<Node<'a>>],
+    path: &mut Vec<String>,
+    path_map: &mut HashMap<Id<Node<'a>>, String>,
+) {
+    for (index, &node) in nodes.iter().enumerate() {
+        path.push(index.to_string());
+        resolve_location(arena, node, path, path_map);
+        path.pop();
+    }
+}
+
+pub fn resolve_location<'a>(
+    arena: &AllArenas<'a>,
+    node: Id<Node<'a>>,
+    path: &mut Vec<String>,
+    path_map: &mut HashMap<Id<Node<'a>>, String>,
+) {
+    path_map.insert(node, format!("/{}", path.join("/")));
+    match arena.node(node) {
+        Node::Alternative(node) => {
+            resolve_location_vec(arena, &node.elements, path, path_map);
+        }
+        Node::CapturingGroup(node) => {
+            resolve_location_vec(arena, &node.alternatives, path, path_map);
+        }
+        Node::CharacterClass(node) => {
+            resolve_location_vec(arena, &node.elements, path, path_map);
+        }
+        Node::CharacterClassRange(node) => {
+            path.push("min".to_owned());
+            resolve_location(arena, node.min, path, path_map);
+            path.pop();
+
+            path.push("max".to_owned());
+            resolve_location(arena, node.max, path, path_map);
+            path.pop();
+        }
+        Node::ClassIntersection(node) => {
+            path.push("left".to_owned());
+            resolve_location(arena, node.left, path, path_map);
+            path.pop();
+
+            path.push("right".to_owned());
+            resolve_location(arena, node.right, path, path_map);
+            path.pop();
+        }
+        Node::ClassStringDisjunction(node) => {
+            resolve_location_vec(arena, &node.alternatives, path, path_map);
+        }
+        Node::ClassSubtraction(node) => {
+            path.push("left".to_owned());
+            resolve_location(arena, node.left, path, path_map);
+            path.pop();
+
+            path.push("right".to_owned());
+            resolve_location(arena, node.right, path, path_map);
+            path.pop();
+        }
+        Node::ExpressionCharacterClass(node) => {
+            path.push("expression".to_owned());
+            resolve_location(arena, node.expression, path, path_map);
+            path.pop();
+        }
+        Node::Group(node) => {
+            resolve_location_vec(arena, &node.alternatives, path, path_map);
+        }
+        Node::Assertion(node) => {
+            if let Some(alternatives) = node.alternatives.as_ref() {
+                resolve_location_vec(arena, alternatives, path, path_map);
+            }
+        }
+        Node::Pattern(node) => {
+            resolve_location_vec(arena, &node.alternatives, path, path_map);
+        }
+        Node::Quantifier(node) => {
+            path.push("element".to_owned());
+            resolve_location(arena, node.element, path, path_map);
+            path.pop();
+        }
+        Node::RegExpLiteral(node) => {
+            path.push("pattern".to_owned());
+            resolve_location(arena, node.pattern, path, path_map);
+            path.pop();
+
+            path.push("flags".to_owned());
+            resolve_location(arena, node.flags, path, path_map);
+            path.pop();
+        }
+        Node::StringAlternative(node) => {
+            resolve_location_vec(arena, &node.elements, path, path_map);
+        }
+        _ => (),
+    }
+}
+
 #[derive(Clone)]
 struct NodeBase<'a> {
     _arena_id: Option<Id<Node<'a>>>,
@@ -176,38 +243,280 @@ impl<'a> NodeInterface<'a> for NodeBase<'a> {
     }
 }
 
-#[derive(Serialize)]
-struct NodeBaseSerializable {
-    id: IdSerializable,
-    parent: Option<IdSerializable>,
-    start: usize,
-    end: usize,
-    raw: Vec<u16>,
+fn get_relative_path<'a>(
+    from: Id<Node<'a>>,
+    to: Id<Node<'a>>,
+    path_map: &HashMap<Id<Node<'a>>, String>,
+) -> String {
+    let from_path = &path_map[&from];
+    let to_path = &path_map[&to];
+    let relative = diff_paths(from_path, to_path).unwrap();
+    let relative = relative.to_str().unwrap();
+    format!(
+        "♻️{}",
+        relative.strip_suffix('/').unwrap_or(relative),
+    )
 }
 
-impl<'a> From<NodeBase<'a>> for NodeBaseSerializable {
-    fn from(value: NodeBase<'a>) -> Self {
-        Self {
-            id: value._arena_id.unwrap().into(),
-            parent: value.parent.map(Into::into),
-            start: value.start,
-            end: value.end,
-            raw: value.raw.to_owned(),
+pub fn to_node_unresolved<'a>(
+    id: Id<Node<'a>>,
+    arena: &AllArenas<'a>,
+    path_map: &HashMap<Id<Node<'a>>, String>,
+) -> NodeUnresolved {
+    match arena.node(id) {
+        Node::Alternative(node) => NodeUnresolved::Alternative(Box::new(AlternativeUnresolved {
+            parent: node
+                ._base
+                .parent
+                .map(|parent| get_relative_path(node._base._arena_id.unwrap(), parent, path_map)),
+            start: node._base.start,
+            end: node._base.end,
+            raw: node._base.raw.to_owned(),
+            elements: node
+                .elements
+                .iter()
+                .map(|&node| to_node_unresolved(node, arena, path_map))
+                .collect(),
+        })),
+        Node::CapturingGroup(node) => {
+            NodeUnresolved::CapturingGroup(Box::new(CapturingGroupUnresolved {
+                parent: node._base.parent.map(|parent| {
+                    get_relative_path(node._base._arena_id.unwrap(), parent, path_map)
+                }),
+                start: node._base.start,
+                end: node._base.end,
+                raw: node._base.raw.to_owned(),
+                name: node.name.map(ToOwned::to_owned),
+                alternatives: node
+                    .alternatives
+                    .iter()
+                    .map(|&node| to_node_unresolved(node, arena, path_map))
+                    .collect(),
+                references: node
+                    .references
+                    .iter()
+                    .map(|&reference| {
+                        get_relative_path(node._base._arena_id.unwrap(), reference, path_map)
+                    })
+                    .collect(),
+            }))
         }
+        Node::CharacterClass(node) => {
+            NodeUnresolved::CharacterClass(Box::new(CharacterClassUnresolved {
+                parent: node._base.parent.map(|parent| {
+                    get_relative_path(node._base._arena_id.unwrap(), parent, path_map)
+                }),
+                start: node._base.start,
+                end: node._base.end,
+                raw: node._base.raw.to_owned(),
+                unicode_sets: node.unicode_sets,
+                negate: node.negate,
+                elements: node
+                    .elements
+                    .iter()
+                    .map(|&node| to_node_unresolved(node, arena, path_map))
+                    .collect(),
+            }))
+        }
+        Node::CharacterClassRange(node) => {
+            NodeUnresolved::CharacterClassRange(Box::new(CharacterClassRangeUnresolved {
+                parent: node._base.parent.map(|parent| {
+                    get_relative_path(node._base._arena_id.unwrap(), parent, path_map)
+                }),
+                start: node._base.start,
+                end: node._base.end,
+                raw: node._base.raw.to_owned(),
+                min: to_node_unresolved(node.min, arena, path_map),
+                max: to_node_unresolved(node.max, arena, path_map),
+            }))
+        }
+        Node::ClassIntersection(node) => {
+            NodeUnresolved::ClassIntersection(Box::new(ClassIntersectionUnresolved {
+                parent: node._base.parent.map(|parent| {
+                    get_relative_path(node._base._arena_id.unwrap(), parent, path_map)
+                }),
+                start: node._base.start,
+                end: node._base.end,
+                raw: node._base.raw.to_owned(),
+                left: to_node_unresolved(node.left, arena, path_map),
+                right: to_node_unresolved(node.right, arena, path_map),
+            }))
+        }
+        Node::ClassStringDisjunction(node) => {
+            NodeUnresolved::ClassStringDisjunction(Box::new(ClassStringDisjunctionUnresolved {
+                parent: node._base.parent.map(|parent| {
+                    get_relative_path(node._base._arena_id.unwrap(), parent, path_map)
+                }),
+                start: node._base.start,
+                end: node._base.end,
+                raw: node._base.raw.to_owned(),
+                alternatives: node
+                    .alternatives
+                    .iter()
+                    .map(|&node| to_node_unresolved(node, arena, path_map))
+                    .collect(),
+            }))
+        }
+        Node::ClassSubtraction(node) => {
+            NodeUnresolved::ClassSubtraction(Box::new(ClassSubtractionUnresolved {
+                parent: node._base.parent.map(|parent| {
+                    get_relative_path(node._base._arena_id.unwrap(), parent, path_map)
+                }),
+                start: node._base.start,
+                end: node._base.end,
+                raw: node._base.raw.to_owned(),
+                left: to_node_unresolved(node.left, arena, path_map),
+                right: to_node_unresolved(node.right, arena, path_map),
+            }))
+        }
+        Node::ExpressionCharacterClass(node) => {
+            NodeUnresolved::ExpressionCharacterClass(Box::new(ExpressionCharacterClassUnresolved {
+                parent: node._base.parent.map(|parent| {
+                    get_relative_path(node._base._arena_id.unwrap(), parent, path_map)
+                }),
+                start: node._base.start,
+                end: node._base.end,
+                raw: node._base.raw.to_owned(),
+                negate: node.negate,
+                expression: to_node_unresolved(node.expression, arena, path_map),
+            }))
+        }
+        Node::Group(node) => NodeUnresolved::Group(Box::new(GroupUnresolved {
+            parent: node
+                ._base
+                .parent
+                .map(|parent| get_relative_path(node._base._arena_id.unwrap(), parent, path_map)),
+            start: node._base.start,
+            end: node._base.end,
+            raw: node._base.raw.to_owned(),
+            alternatives: node
+                .alternatives
+                .iter()
+                .map(|&node| to_node_unresolved(node, arena, path_map))
+                .collect(),
+        })),
+        Node::Assertion(node) => NodeUnresolved::Assertion(Box::new(AssertionUnresolved {
+            parent: node
+                ._base
+                .parent
+                .map(|parent| get_relative_path(node._base._arena_id.unwrap(), parent, path_map)),
+            start: node._base.start,
+            end: node._base.end,
+            raw: node._base.raw.to_owned(),
+            kind: node.kind,
+            negate: node.negate,
+            alternatives: node.alternatives.as_ref().map(|alternatives| {
+                alternatives
+                    .iter()
+                    .map(|&node| to_node_unresolved(node, arena, path_map))
+                    .collect()
+            }),
+        })),
+        Node::Pattern(node) => NodeUnresolved::Pattern(Box::new(PatternUnresolved {
+            parent: node
+                ._base
+                .parent
+                .map(|parent| get_relative_path(node._base._arena_id.unwrap(), parent, path_map)),
+            start: node._base.start,
+            end: node._base.end,
+            raw: node._base.raw.to_owned(),
+            alternatives: node
+                .alternatives
+                .iter()
+                .map(|&node| to_node_unresolved(node, arena, path_map))
+                .collect(),
+        })),
+        Node::Quantifier(node) => NodeUnresolved::Quantifier(Box::new(QuantifierUnresolved {
+            parent: node
+                ._base
+                .parent
+                .map(|parent| get_relative_path(node._base._arena_id.unwrap(), parent, path_map)),
+            start: node._base.start,
+            end: node._base.end,
+            raw: node._base.raw.to_owned(),
+            min: node.min,
+            max: node.max,
+            greedy: node.greedy,
+            element: to_node_unresolved(node.element, arena, path_map),
+        })),
+        Node::RegExpLiteral(node) => NodeUnresolved::RegExpLiteral(Box::new(RegExpLiteralUnresolved {
+            parent: node
+                ._base
+                .parent
+                .map(|parent| get_relative_path(node._base._arena_id.unwrap(), parent, path_map)),
+            start: node._base.start,
+            end: node._base.end,
+            raw: node._base.raw.to_owned(),
+            pattern: to_node_unresolved(node.pattern, arena, path_map),
+            flags: to_node_unresolved(node.flags, arena, path_map),
+        })),
+        Node::StringAlternative(node) => NodeUnresolved::StringAlternative(Box::new(StringAlternativeUnresolved {
+            parent: node
+                ._base
+                .parent
+                .map(|parent| get_relative_path(node._base._arena_id.unwrap(), parent, path_map)),
+            start: node._base.start,
+            end: node._base.end,
+            raw: node._base.raw.to_owned(),
+            elements: node
+                .elements
+                .iter()
+                .map(|&node| to_node_unresolved(node, arena, path_map))
+                .collect(),
+        })),
+        Node::Backreference(node) => NodeUnresolved::Backreference(Box::new(BackreferenceUnresolved {
+            parent: node
+                ._base
+                .parent
+                .map(|parent| get_relative_path(node._base._arena_id.unwrap(), parent, path_map)),
+            start: node._base.start,
+            end: node._base.end,
+            raw: node._base.raw.to_owned(),
+            ref_: node.ref_.into(),
+            resolved: get_relative_path(node._base._arena_id.unwrap(), node.resolved, path_map),
+        })),
+        Node::Character(node) => NodeUnresolved::Character(Box::new(CharacterUnresolved {
+            parent: node
+                ._base
+                .parent
+                .map(|parent| get_relative_path(node._base._arena_id.unwrap(), parent, path_map)),
+            start: node._base.start,
+            end: node._base.end,
+            raw: node._base.raw.to_owned(),
+            value: node.value,
+        })),
+        Node::CharacterSet(node) => NodeUnresolved::CharacterSet(Box::new(CharacterSetUnresolved {
+            parent: node
+                ._base
+                .parent
+                .map(|parent| get_relative_path(node._base._arena_id.unwrap(), parent, path_map)),
+            start: node._base.start,
+            end: node._base.end,
+            raw: node._base.raw.to_owned(),
+            kind: node.kind,
+            strings: node.strings,
+            key: node.key.map(ToOwned::to_owned),
+            value: node.value.map(ToOwned::to_owned),
+            negate: node.negate,
+        })),
+        Node::Flags(node) => NodeUnresolved::Flags(Box::new(FlagsUnresolved {
+            parent: node
+                ._base
+                .parent
+                .map(|parent| get_relative_path(node._base._arena_id.unwrap(), parent, path_map)),
+            start: node._base.start,
+            end: node._base.end,
+            raw: node._base.raw.to_owned(),
+            dot_all: node.dot_all,
+            global: node.global,
+            has_indices: node.has_indices,
+            ignore_case: node.ignore_case,
+            multiline: node.multiline,
+            sticky: node.sticky,
+            unicode: node.unicode,
+            unicode_sets: node.unicode_sets,
+        })),
     }
-}
-
-impl<'a> Serialize for NodeBase<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        NodeBaseSerializable::from(self.clone()).serialize(serializer)
-    }
-}
-
-fn to_node_serializable<'a>(id: Id<Node<'a>>, arena: &AllArenas<'a>) -> NodeSerializable {
-    arena.node(id).clone().into()
 }
 
 #[derive(Clone)]
@@ -215,33 +524,6 @@ pub struct RegExpLiteral<'a> {
     _base: NodeBase<'a>,
     pub pattern: Id<Node<'a>>, /*Pattern*/
     pub flags: Id<Node<'a>>,   /*Flags*/
-}
-
-#[derive(Serialize)]
-struct RegExpLiteralSerializable {
-    #[serde(flatten)]
-    _base: NodeBaseSerializable,
-    pattern: NodeSerializable,
-    flags: NodeSerializable,
-}
-
-impl<'a> From<RegExpLiteral<'a>> for RegExpLiteralSerializable {
-    fn from(value: RegExpLiteral<'a>) -> Self {
-        Self {
-            _base: value._base.clone().into(),
-            pattern: to_node_serializable(value.pattern, value._base.arena()),
-            flags: to_node_serializable(value.flags, value._base.arena()),
-        }
-    }
-}
-
-impl<'a> Serialize for RegExpLiteral<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        RegExpLiteralSerializable::from(self.clone()).serialize(serializer)
-    }
 }
 
 fn deserialize_wtf_16<'de, D>(deserializer: D) -> Result<Vec<u16>, D::Error>
@@ -274,7 +556,7 @@ where
     })
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct RegExpLiteralUnresolved {
     pub parent: Option<String>,
     pub start: usize,
@@ -292,36 +574,7 @@ pub struct Pattern<'a> {
     pub alternatives: Vec<Id<Node<'a>> /*Alternative*/>,
 }
 
-#[derive(Serialize)]
-struct PatternSerializable {
-    #[serde(flatten)]
-    _base: NodeBaseSerializable,
-    alternatives: Vec<NodeSerializable>,
-}
-
-impl<'a> From<Pattern<'a>> for PatternSerializable {
-    fn from(value: Pattern<'a>) -> Self {
-        Self {
-            _base: value._base.clone().into(),
-            alternatives: value
-                .alternatives
-                .iter()
-                .map(|&id| to_node_serializable(id, value._base.arena()))
-                .collect(),
-        }
-    }
-}
-
-impl<'a> Serialize for Pattern<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        PatternSerializable::from(self.clone()).serialize(serializer)
-    }
-}
-
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct PatternUnresolved {
     pub parent: Option<String>,
     pub start: usize,
@@ -337,36 +590,7 @@ pub struct Alternative<'a> {
     pub elements: Vec<Id<Node<'a>> /*Element*/>,
 }
 
-#[derive(Serialize)]
-struct AlternativeSerializable {
-    #[serde(flatten)]
-    _base: NodeBaseSerializable,
-    elements: Vec<NodeSerializable>,
-}
-
-impl<'a> From<Alternative<'a>> for AlternativeSerializable {
-    fn from(value: Alternative<'a>) -> Self {
-        Self {
-            _base: value._base.clone().into(),
-            elements: value
-                .elements
-                .iter()
-                .map(|&id| to_node_serializable(id, value._base.arena()))
-                .collect(),
-        }
-    }
-}
-
-impl<'a> Serialize for Alternative<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        AlternativeSerializable::from(self.clone()).serialize(serializer)
-    }
-}
-
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct AlternativeUnresolved {
     pub parent: Option<String>,
     pub start: usize,
@@ -382,36 +606,7 @@ pub struct Group<'a> {
     pub alternatives: Vec<Id<Node<'a>> /*Alternative*/>,
 }
 
-#[derive(Serialize)]
-struct GroupSerializable {
-    #[serde(flatten)]
-    _base: NodeBaseSerializable,
-    alternatives: Vec<NodeSerializable>,
-}
-
-impl<'a> From<Group<'a>> for GroupSerializable {
-    fn from(value: Group<'a>) -> Self {
-        Self {
-            _base: value._base.clone().into(),
-            alternatives: value
-                .alternatives
-                .iter()
-                .map(|&id| to_node_serializable(id, value._base.arena()))
-                .collect(),
-        }
-    }
-}
-
-impl<'a> Serialize for Group<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        GroupSerializable::from(self.clone()).serialize(serializer)
-    }
-}
-
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct GroupUnresolved {
     pub parent: Option<String>,
     pub start: usize,
@@ -429,40 +624,7 @@ pub struct CapturingGroup<'a> {
     pub references: Vec<Id<Node<'a>> /*Backreference*/>,
 }
 
-#[derive(Serialize)]
-struct CapturingGroupSerializable {
-    #[serde(flatten)]
-    _base: NodeBaseSerializable,
-    name: Option<String>,
-    alternatives: Vec<NodeSerializable>,
-    references: Vec<IdSerializable>,
-}
-
-impl<'a> From<CapturingGroup<'a>> for CapturingGroupSerializable {
-    fn from(value: CapturingGroup<'a>) -> Self {
-        Self {
-            _base: value._base.clone().into(),
-            name: value.name.map(ToOwned::to_owned),
-            alternatives: value
-                .alternatives
-                .iter()
-                .map(|&id| to_node_serializable(id, value._base.arena()))
-                .collect(),
-            references: value.references.iter().copied().map(Into::into).collect(),
-        }
-    }
-}
-
-impl<'a> Serialize for CapturingGroup<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        CapturingGroupSerializable::from(self.clone()).serialize(serializer)
-    }
-}
-
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct CapturingGroupUnresolved {
     pub parent: Option<String>,
     pub start: usize,
@@ -482,41 +644,7 @@ pub struct Assertion<'a> {
     pub alternatives: Option<Vec<Id<Node<'a>> /*Alternative*/>>,
 }
 
-#[derive(Serialize)]
-struct AssertionSerializable {
-    #[serde(flatten)]
-    _base: NodeBaseSerializable,
-    kind: AssertionKind,
-    negate: Option<bool>,
-    alternatives: Option<Vec<NodeSerializable>>,
-}
-
-impl<'a> From<Assertion<'a>> for AssertionSerializable {
-    fn from(value: Assertion<'a>) -> Self {
-        Self {
-            _base: value._base.clone().into(),
-            kind: value.kind,
-            negate: value.negate,
-            alternatives: value.alternatives.map(|alternatives| {
-                alternatives
-                    .iter()
-                    .map(|&id| to_node_serializable(id, value._base.arena()))
-                    .collect()
-            }),
-        }
-    }
-}
-
-impl<'a> Serialize for Assertion<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        AssertionSerializable::from(self.clone()).serialize(serializer)
-    }
-}
-
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct AssertionUnresolved {
     pub parent: Option<String>,
     pub start: usize,
@@ -537,38 +665,7 @@ pub struct Quantifier<'a> {
     pub element: Id<Node<'a> /*QuantifiableElement*/>,
 }
 
-#[derive(Serialize)]
-struct QuantifierSerializable {
-    #[serde(flatten)]
-    _base: NodeBaseSerializable,
-    min: usize,
-    max: usize,
-    greedy: bool,
-    element: NodeSerializable,
-}
-
-impl<'a> From<Quantifier<'a>> for QuantifierSerializable {
-    fn from(value: Quantifier<'a>) -> Self {
-        Self {
-            _base: value._base.clone().into(),
-            min: value.min,
-            max: value.max,
-            greedy: value.greedy,
-            element: to_node_serializable(value.element, value._base.arena()),
-        }
-    }
-}
-
-impl<'a> Serialize for Quantifier<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        QuantifierSerializable::from(self.clone()).serialize(serializer)
-    }
-}
-
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct QuantifierUnresolved {
     pub parent: Option<String>,
     pub start: usize,
@@ -590,40 +687,7 @@ pub struct CharacterClass<'a> {
     pub elements: Vec<Id<Node<'a>> /*CharacterClassElement*/>,
 }
 
-#[derive(Serialize)]
-struct CharacterClassSerializable {
-    #[serde(flatten)]
-    _base: NodeBaseSerializable,
-    unicode_sets: bool,
-    negate: bool,
-    elements: Vec<NodeSerializable>,
-}
-
-impl<'a> From<CharacterClass<'a>> for CharacterClassSerializable {
-    fn from(value: CharacterClass<'a>) -> Self {
-        Self {
-            _base: value._base.clone().into(),
-            unicode_sets: value.unicode_sets,
-            negate: value.negate,
-            elements: value
-                .elements
-                .iter()
-                .map(|&id| to_node_serializable(id, value._base.arena()))
-                .collect(),
-        }
-    }
-}
-
-impl<'a> Serialize for CharacterClass<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        CharacterClassSerializable::from(self.clone()).serialize(serializer)
-    }
-}
-
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CharacterClassUnresolved {
     pub parent: Option<String>,
@@ -643,34 +707,7 @@ pub struct CharacterClassRange<'a> {
     pub max: Id<Node<'a> /*Character*/>,
 }
 
-#[derive(Serialize)]
-struct CharacterClassRangeSerializable {
-    #[serde(flatten)]
-    _base: NodeBaseSerializable,
-    min: NodeSerializable,
-    max: NodeSerializable,
-}
-
-impl<'a> From<CharacterClassRange<'a>> for CharacterClassRangeSerializable {
-    fn from(value: CharacterClassRange<'a>) -> Self {
-        Self {
-            _base: value._base.clone().into(),
-            min: to_node_serializable(value.min, value._base.arena()),
-            max: to_node_serializable(value.max, value._base.arena()),
-        }
-    }
-}
-
-impl<'a> Serialize for CharacterClassRange<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        CharacterClassRangeSerializable::from(self.clone()).serialize(serializer)
-    }
-}
-
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct CharacterClassRangeUnresolved {
     pub parent: Option<String>,
     pub start: usize,
@@ -691,40 +728,7 @@ pub struct CharacterSet<'a> {
     pub negate: Option<bool>,
 }
 
-#[derive(Serialize)]
-struct CharacterSetSerializable {
-    #[serde(flatten)]
-    _base: NodeBaseSerializable,
-    kind: CharacterKind,
-    strings: Option<bool>,
-    key: Option<String>,
-    value: Option<String>,
-    negate: Option<bool>,
-}
-
-impl<'a> From<CharacterSet<'a>> for CharacterSetSerializable {
-    fn from(value: CharacterSet<'a>) -> Self {
-        Self {
-            _base: value._base.into(),
-            kind: value.kind,
-            strings: value.strings,
-            key: value.key.map(ToOwned::to_owned),
-            value: value.value.map(ToOwned::to_owned),
-            negate: value.negate,
-        }
-    }
-}
-
-impl<'a> Serialize for CharacterSet<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        CharacterSetSerializable::from(self.clone()).serialize(serializer)
-    }
-}
-
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct CharacterSetUnresolved {
     pub parent: Option<String>,
     pub start: usize,
@@ -745,34 +749,7 @@ pub struct ExpressionCharacterClass<'a> {
     pub expression: Id<Node<'a> /*ClassIntersection | ClassSubtraction*/>,
 }
 
-#[derive(Serialize)]
-struct ExpressionCharacterClassSerializable {
-    #[serde(flatten)]
-    _base: NodeBaseSerializable,
-    negate: bool,
-    expression: NodeSerializable,
-}
-
-impl<'a> From<ExpressionCharacterClass<'a>> for ExpressionCharacterClassSerializable {
-    fn from(value: ExpressionCharacterClass<'a>) -> Self {
-        Self {
-            _base: value._base.clone().into(),
-            negate: value.negate,
-            expression: to_node_serializable(value.expression, value._base.arena()),
-        }
-    }
-}
-
-impl<'a> Serialize for ExpressionCharacterClass<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        ExpressionCharacterClassSerializable::from(self.clone()).serialize(serializer)
-    }
-}
-
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct ExpressionCharacterClassUnresolved {
     pub parent: Option<String>,
     pub start: usize,
@@ -790,34 +767,7 @@ pub struct ClassIntersection<'a> {
     pub right: Id<Node<'a> /*ClassSetOperand*/>,
 }
 
-#[derive(Serialize)]
-struct ClassIntersectionSerializable {
-    #[serde(flatten)]
-    _base: NodeBaseSerializable,
-    left: NodeSerializable,
-    right: NodeSerializable,
-}
-
-impl<'a> From<ClassIntersection<'a>> for ClassIntersectionSerializable {
-    fn from(value: ClassIntersection<'a>) -> Self {
-        Self {
-            _base: value._base.clone().into(),
-            left: to_node_serializable(value.left, value._base.arena()),
-            right: to_node_serializable(value.right, value._base.arena()),
-        }
-    }
-}
-
-impl<'a> Serialize for ClassIntersection<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        ClassIntersectionSerializable::from(self.clone()).serialize(serializer)
-    }
-}
-
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct ClassIntersectionUnresolved {
     pub parent: Option<String>,
     pub start: usize,
@@ -835,34 +785,7 @@ pub struct ClassSubtraction<'a> {
     pub right: Id<Node<'a> /*ClassSetOperand*/>,
 }
 
-#[derive(Serialize)]
-struct ClassSubtractionSerializable {
-    #[serde(flatten)]
-    _base: NodeBaseSerializable,
-    left: NodeSerializable,
-    right: NodeSerializable,
-}
-
-impl<'a> From<ClassSubtraction<'a>> for ClassSubtractionSerializable {
-    fn from(value: ClassSubtraction<'a>) -> Self {
-        Self {
-            _base: value._base.clone().into(),
-            left: to_node_serializable(value.left, value._base.arena()),
-            right: to_node_serializable(value.right, value._base.arena()),
-        }
-    }
-}
-
-impl<'a> Serialize for ClassSubtraction<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        ClassSubtractionSerializable::from(self.clone()).serialize(serializer)
-    }
-}
-
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct ClassSubtractionUnresolved {
     pub parent: Option<String>,
     pub start: usize,
@@ -879,36 +802,7 @@ pub struct ClassStringDisjunction<'a> {
     pub alternatives: Vec<Id<Node<'a>> /*StringAlternative*/>,
 }
 
-#[derive(Serialize)]
-struct ClassStringDisjunctionSerializable {
-    #[serde(flatten)]
-    _base: NodeBaseSerializable,
-    alternatives: Vec<NodeSerializable>,
-}
-
-impl<'a> From<ClassStringDisjunction<'a>> for ClassStringDisjunctionSerializable {
-    fn from(value: ClassStringDisjunction<'a>) -> Self {
-        Self {
-            _base: value._base.clone().into(),
-            alternatives: value
-                .alternatives
-                .iter()
-                .map(|&id| to_node_serializable(id, value._base.arena()))
-                .collect(),
-        }
-    }
-}
-
-impl<'a> Serialize for ClassStringDisjunction<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        ClassStringDisjunctionSerializable::from(self.clone()).serialize(serializer)
-    }
-}
-
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct ClassStringDisjunctionUnresolved {
     pub parent: Option<String>,
     pub start: usize,
@@ -924,36 +818,7 @@ pub struct StringAlternative<'a> {
     pub elements: Vec<Id<Node<'a>> /*Character*/>,
 }
 
-#[derive(Serialize)]
-struct StringAlternativeSerializable {
-    #[serde(flatten)]
-    _base: NodeBaseSerializable,
-    elements: Vec<NodeSerializable>,
-}
-
-impl<'a> From<StringAlternative<'a>> for StringAlternativeSerializable {
-    fn from(value: StringAlternative<'a>) -> Self {
-        Self {
-            _base: value._base.clone().into(),
-            elements: value
-                .elements
-                .iter()
-                .map(|&id| to_node_serializable(id, value._base.arena()))
-                .collect(),
-        }
-    }
-}
-
-impl<'a> Serialize for StringAlternative<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        StringAlternativeSerializable::from(self.clone()).serialize(serializer)
-    }
-}
-
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct StringAlternativeUnresolved {
     pub parent: Option<String>,
     pub start: usize,
@@ -969,32 +834,7 @@ pub struct Character<'a> {
     pub value: CodePoint,
 }
 
-#[derive(Serialize)]
-struct CharacterSerializable {
-    #[serde(flatten)]
-    _base: NodeBaseSerializable,
-    value: CodePoint,
-}
-
-impl<'a> From<Character<'a>> for CharacterSerializable {
-    fn from(value: Character<'a>) -> Self {
-        Self {
-            _base: value._base.into(),
-            value: value.value,
-        }
-    }
-}
-
-impl<'a> Serialize for Character<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        CharacterSerializable::from(self.clone()).serialize(serializer)
-    }
-}
-
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct CharacterUnresolved {
     pub parent: Option<String>,
     pub start: usize,
@@ -1011,34 +851,7 @@ pub struct Backreference<'a> {
     pub resolved: Id<Node<'a> /*CapturingGroup*/>,
 }
 
-#[derive(Serialize)]
-struct BackreferenceSerializable {
-    #[serde(flatten)]
-    _base: NodeBaseSerializable,
-    ref_: CapturingGroupKeyOwned,
-    resolved: IdSerializable,
-}
-
-impl<'a> From<Backreference<'a>> for BackreferenceSerializable {
-    fn from(value: Backreference<'a>) -> Self {
-        Self {
-            _base: value._base.into(),
-            ref_: value.ref_.into(),
-            resolved: value.resolved.into(),
-        }
-    }
-}
-
-impl<'a> Serialize for Backreference<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        BackreferenceSerializable::from(self.clone()).serialize(serializer)
-    }
-}
-
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct BackreferenceUnresolved {
     pub parent: Option<String>,
     pub start: usize,
@@ -1063,46 +876,7 @@ pub struct Flags<'a> {
     pub unicode_sets: bool,
 }
 
-#[derive(Serialize)]
-struct FlagsSerializable {
-    #[serde(flatten)]
-    _base: NodeBaseSerializable,
-    dot_all: bool,
-    global: bool,
-    has_indices: bool,
-    ignore_case: bool,
-    multiline: bool,
-    sticky: bool,
-    unicode: bool,
-    unicode_sets: bool,
-}
-
-impl<'a> From<Flags<'a>> for FlagsSerializable {
-    fn from(value: Flags<'a>) -> Self {
-        Self {
-            _base: value._base.into(),
-            dot_all: value.dot_all,
-            global: value.global,
-            has_indices: value.has_indices,
-            ignore_case: value.ignore_case,
-            multiline: value.multiline,
-            sticky: value.sticky,
-            unicode: value.unicode,
-            unicode_sets: value.unicode_sets,
-        }
-    }
-}
-
-impl<'a> Serialize for Flags<'a> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        FlagsSerializable::from(self.clone()).serialize(serializer)
-    }
-}
-
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct FlagsUnresolved {
     pub parent: Option<String>,

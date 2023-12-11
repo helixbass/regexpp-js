@@ -2,6 +2,7 @@ use id_arena::{Arena, Id};
 
 use crate::ast::{Node, NodeInterface};
 
+#[derive(Default)]
 pub struct AllArenas<'a> {
     nodes: Arena<Node<'a>>,
 }

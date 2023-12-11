@@ -180,7 +180,7 @@ pub enum CapturingGroupKey<'a> {
     Name(&'a str),
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum CapturingGroupKeyOwned {
     Index(usize),
