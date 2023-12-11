@@ -676,6 +676,121 @@ impl<'a> validator::Options for RegExpParserState<'a> {
             .insert(parent, node);
     }
 
+    fn on_class_subtraction(&self, start: usize, end: usize) {
+        let parent = self._node.borrow().unwrap();
+        assert!(matches!(
+            &*self._arena.node(parent),
+            Node::CharacterClass(parent) if parent.unicode_sets
+        ));
+
+        let right = self
+            ._arena
+            .node_mut(parent)
+            .as_character_class_mut()
+            .elements
+            .pop()
+            .unwrap();
+        let left = self
+            ._expression_buffer_map
+            .borrow()
+            .get(&parent)
+            .copied()
+            .unwrap_or_else(|| {
+                self._arena
+                    .node_mut(parent)
+                    .as_character_class_mut()
+                    .elements
+                    .pop()
+                    .unwrap()
+            });
+        assert!(!matches!(
+            &*self._arena.node(left),
+            Node::ClassIntersection(_)
+        ),);
+        assert!(
+            !(!matches!(&*self._arena.node(left), Node::ClassSubtraction(_))
+                && !is_class_set_operand(&self._arena.node(left)))
+        );
+        assert!(is_class_set_operand(&self._arena.node(right)));
+        let node = self._arena.alloc_node(Node::new_class_subtraction(
+            Some(parent),
+            start,
+            end,
+            self.source[start..end].to_owned(),
+            left,
+            right,
+        ));
+        self._arena.node_mut(left).set_parent(Some(node));
+        self._arena.node_mut(right).set_parent(Some(node));
+        self._expression_buffer_map
+            .borrow_mut()
+            .insert(parent, node);
+    }
+
+    fn on_class_string_disjunction_enter(&self, start: usize) {
+        let parent = self._node.borrow().unwrap();
+        assert!(matches!(
+            &*self._arena.node(parent),
+            Node::CharacterClass(parent) if parent.unicode_sets
+        ));
+
+        *self._node.borrow_mut() =
+            Some(self._arena.alloc_node(Node::new_class_string_disjunction(
+                Some(parent),
+                start,
+                start,
+                Default::default(),
+                Default::default(),
+            )));
+        let node = self._node.borrow().unwrap();
+        self._arena
+            .node_mut(parent)
+            .as_character_class_mut()
+            .elements
+            .push(node);
+    }
+
+    fn on_class_string_disjunction_leave(&self, start: usize, end: usize) {
+        let node = self._node.borrow().unwrap();
+        assert!(matches!(
+            &*self._arena.node(node),
+            Node::ClassStringDisjunction(_)
+        ));
+        let parent = self._arena.node(node).maybe_parent().unwrap();
+        assert!(matches!(
+            &*self._arena.node(parent),
+            Node::CharacterClass(_)
+        ));
+
+        self._arena.node_mut(node).thrush(|mut node| {
+            node.set_end(end);
+            node.set_raw(self.source[start..end].to_owned());
+        });
+        *self._node.borrow_mut() = Some(parent);
+    }
+
+    fn on_string_alternative_enter(&self, start: usize, _index: usize) {
+        let parent = self._node.borrow().unwrap();
+        assert!(matches!(
+            &*self._arena.node(parent),
+            Node::ClassStringDisjunction(_)
+        ));
+
+        *self._node.borrow_mut() = Some(self._arena.alloc_node(Node::new_string_alternative(
+            Some(parent),
+            start,
+            start,
+            Default::default(),
+            Default::default(),
+        )));
+        let node = self._node.borrow().unwrap();
+        self._arena
+            .node_mut(parent)
+            .as_class_string_disjunction_mut()
+            .alternatives
+            .push(node);
+    }
+
     fn on_literal_enter(&self, start: usize) {}
 
     fn on_literal_leave(&self, start: usize, end: usize) {}
@@ -683,14 +798,6 @@ impl<'a> validator::Options for RegExpParserState<'a> {
     fn on_disjunction_enter(&self, start: usize) {}
 
     fn on_disjunction_leave(&self, start: usize, end: usize) {}
-
-    fn on_class_subtraction(&self, start: usize, end: usize) {}
-
-    fn on_class_string_disjunction_enter(&self, start: usize) {}
-
-    fn on_class_string_disjunction_leave(&self, start: usize, end: usize) {}
-
-    fn on_string_alternative_enter(&self, start: usize, TODO: usize) {}
 
     fn on_string_alternative_leave(&self, start: usize, TODO: usize, a: usize) {}
 }

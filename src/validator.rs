@@ -214,7 +214,7 @@ pub trait Options {
     fn on_class_subtraction(&self, start: usize, end: usize) {}
     fn on_class_string_disjunction_enter(&self, start: usize) {}
     fn on_class_string_disjunction_leave(&self, start: usize, end: usize) {}
-    fn on_string_alternative_enter(&self, start: usize, TODO: usize) {}
+    fn on_string_alternative_enter(&self, start: usize, index: usize) {}
     fn on_string_alternative_leave(&self, start: usize, TODO: usize, a: usize) {}
 }
 

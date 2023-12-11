@@ -352,6 +352,65 @@ impl Node {
         })
     }
 
+    pub fn new_class_subtraction(
+        parent: Option<Id<Node>>,
+        start: usize,
+        end: usize,
+        raw: Vec<u16>,
+        left: Id<Node>,
+        right: Id<Node>,
+    ) -> Self {
+        Self::ClassSubtraction(ClassSubtraction {
+            _base: NodeBase {
+                _arena_id: Default::default(),
+                parent,
+                start,
+                end,
+                raw,
+            },
+            left,
+            right,
+        })
+    }
+
+    pub fn new_class_string_disjunction(
+        parent: Option<Id<Node>>,
+        start: usize,
+        end: usize,
+        raw: Vec<u16>,
+        alternatives: Vec<Id<Node>>,
+    ) -> Self {
+        Self::ClassStringDisjunction(ClassStringDisjunction {
+            _base: NodeBase {
+                _arena_id: Default::default(),
+                parent,
+                start,
+                end,
+                raw,
+            },
+            alternatives,
+        })
+    }
+
+    pub fn new_string_alternative(
+        parent: Option<Id<Node>>,
+        start: usize,
+        end: usize,
+        raw: Vec<u16>,
+        elements: Vec<Id<Node>>,
+    ) -> Self {
+        Self::StringAlternative(StringAlternative {
+            _base: NodeBase {
+                _arena_id: Default::default(),
+                parent,
+                start,
+                end,
+                raw,
+            },
+            elements,
+        })
+    }
+
     pub fn as_backreference(&self) -> &Backreference {
         match self {
             Self::Backreference(value) => value,
@@ -397,6 +456,13 @@ impl Node {
     pub fn as_character_class_mut(&mut self) -> &mut CharacterClass {
         match self {
             Self::CharacterClass(value) => value,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn as_class_string_disjunction_mut(&mut self) -> &mut ClassStringDisjunction {
+        match self {
+            Self::ClassStringDisjunction(value) => value,
             _ => unreachable!(),
         }
     }
