@@ -131,7 +131,7 @@ impl Node {
         start: usize,
         end: usize,
         raw: Vec<u16>,
-        name: Option<String>,
+        name: Option<Vec<u16>>,
         alternatives: Vec<Id<Node>>,
         references: Vec<Id<Node>>,
     ) -> Self {
@@ -206,8 +206,8 @@ impl Node {
         raw: Vec<u16>,
         kind: CharacterKind,
         strings: Option<bool>,
-        key: Option<String>,
-        value: Option<String>,
+        key: Option<Vec<u16>>,
+        value: Option<Vec<u16>>,
         negate: Option<bool>,
     ) -> Self {
         Self::CharacterSet(CharacterSet {
@@ -408,6 +408,27 @@ impl Node {
                 raw,
             },
             elements,
+        })
+    }
+
+    pub fn new_reg_exp_literal(
+        parent: Option<Id<Node>>,
+        start: usize,
+        end: usize,
+        raw: Vec<u16>,
+        pattern: Id<Node>,
+        flags: Id<Node>,
+    ) -> Self {
+        Self::RegExpLiteral(RegExpLiteral {
+            _base: NodeBase {
+                _arena_id: Default::default(),
+                parent,
+                start,
+                end,
+                raw,
+            },
+            pattern,
+            flags,
         })
     }
 
@@ -970,13 +991,17 @@ pub struct RegExpLiteral {
     pub flags: Id<Node>,   /*Flags*/
 }
 
+pub fn str_to_wtf_16(value: &str) -> Vec<u16> {
+    let wtf8 = Wtf8::from_str(value);
+    wtf8.to_ill_formed_utf16().collect()
+}
+
 fn deserialize_wtf_16<'de, D>(deserializer: D) -> Result<Vec<u16>, D::Error>
 where
     D: Deserializer<'de>,
 {
     let bytes = ByteBuf::deserialize(deserializer)?.into_vec();
-    let wtf8 = Wtf8::from_str(unsafe { mem::transmute(&*bytes) });
-    Ok(wtf8.to_ill_formed_utf16().collect())
+    Ok(str_to_wtf_16(unsafe { mem::transmute(&*bytes) }))
 }
 
 fn deserialize_possibly_infinity_usize<'de, D>(deserializer: D) -> Result<usize, D::Error>
@@ -1063,7 +1088,7 @@ pub struct GroupUnresolved {
 #[derive(Clone)]
 pub struct CapturingGroup {
     _base: NodeBase,
-    pub name: Option<String>,
+    pub name: Option<Vec<u16>>,
     pub alternatives: Vec<Id<Node> /*Alternative*/>,
     pub references: Vec<Id<Node> /*Backreference*/>,
 }
@@ -1075,7 +1100,7 @@ pub struct CapturingGroupUnresolved {
     pub end: usize,
     #[serde(deserialize_with = "deserialize_wtf_16")]
     pub raw: Vec<u16>,
-    pub name: Option<String>,
+    pub name: Option<Vec<u16>>,
     pub alternatives: Vec<NodeUnresolved>,
     pub references: Vec<String>,
 }
@@ -1167,8 +1192,8 @@ pub struct CharacterSet {
     _base: NodeBase,
     pub kind: CharacterKind,
     pub strings: Option<bool>,
-    pub key: Option<String>,
-    pub value: Option<String>,
+    pub key: Option<Vec<u16>>,
+    pub value: Option<Vec<u16>>,
     pub negate: Option<bool>,
 }
 
@@ -1181,8 +1206,8 @@ pub struct CharacterSetUnresolved {
     pub raw: Vec<u16>,
     pub kind: CharacterKind,
     pub strings: Option<bool>,
-    pub key: Option<String>,
-    pub value: Option<String>,
+    pub key: Option<Vec<u16>>,
+    pub value: Option<Vec<u16>>,
     pub negate: Option<bool>,
 }
 

@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{cell::{RefCell, Ref}, collections::HashMap, rc::Rc};
 
 use id_arena::Id;
 use serde::Deserialize;
@@ -6,7 +6,7 @@ use squalid::EverythingExt;
 
 use crate::{
     arena::AllArenas,
-    ast::{Flags, Node, NodeBase, NodeInterface},
+    ast::{Flags, Node, NodeBase, NodeInterface, str_to_wtf_16},
     ecma_versions::{EcmaVersion, LATEST_ECMA_VERSION},
     unicode::HYPHEN_MINUS,
     validator::{self, AssertionKind, CapturingGroupKey, CharacterKind, RegExpFlags},
@@ -40,7 +40,7 @@ struct RegExpParserState<'a> {
     _flags: RefCell<Option<Id<Node> /*Flags*/>>,
     _backreferences: RefCell<Vec<Id<Node> /*Backreference*/>>,
     _capturing_groups: RefCell<Vec<Id<Node> /*CapturingGroup*/>>,
-    source: Vec<u16>,
+    source: RefCell<Vec<u16>>,
 }
 
 impl<'a> RegExpParserState<'a> {
@@ -60,6 +60,10 @@ impl<'a> RegExpParserState<'a> {
             _capturing_groups: Default::default(),
             source: Default::default(),
         }
+    }
+
+    fn source(&self) -> Ref<Vec<u16>> {
+        self.source.borrow()
     }
 
     fn pattern(&self) -> Id<Node> {
@@ -85,7 +89,7 @@ impl<'a> validator::Options for RegExpParserState<'a> {
             None,
             start,
             end,
-            self.source[start..end].to_owned(),
+            self.source()[start..end].to_owned(),
             flags.dot_all,
             flags.global,
             flags.has_indices,
@@ -114,7 +118,7 @@ impl<'a> validator::Options for RegExpParserState<'a> {
             .node_mut(self._node.borrow().unwrap())
             .thrush(|mut node| {
                 node.set_end(end);
-                node.set_raw(self.source[start..end].to_owned());
+                node.set_raw(self.source()[start..end].to_owned());
             });
 
         for &reference in &*self._backreferences.borrow() {
@@ -172,7 +176,7 @@ impl<'a> validator::Options for RegExpParserState<'a> {
 
         self._arena.node_mut(node).thrush(|mut node| {
             node.set_end(end);
-            node.set_raw(self.source[start..end].to_owned());
+            node.set_raw(self.source()[start..end].to_owned());
         });
         *self._node.borrow_mut() = self._arena.node(node).maybe_parent();
     }
@@ -205,12 +209,12 @@ impl<'a> validator::Options for RegExpParserState<'a> {
 
         self._arena.node_mut(node).thrush(|mut node| {
             node.set_end(end);
-            node.set_raw(self.source[start..end].to_owned());
+            node.set_raw(self.source()[start..end].to_owned());
         });
         *self._node.borrow_mut() = self._arena.node(node).maybe_parent();
     }
 
-    fn on_capturing_group_enter(&self, start: usize, name: Option<&str>) {
+    fn on_capturing_group_enter(&self, start: usize, name: Option<&[u16]>) {
         let parent = self._node.borrow().unwrap();
         assert!(matches!(&*self._arena.node(parent), Node::Alternative(_)));
 
@@ -225,7 +229,7 @@ impl<'a> validator::Options for RegExpParserState<'a> {
         )));
     }
 
-    fn on_capturing_group_leave(&self, start: usize, end: usize, _name: Option<&str>) {
+    fn on_capturing_group_leave(&self, start: usize, end: usize, _name: Option<&[u16]>) {
         let node = self._node.borrow().unwrap();
         assert!(matches!(
             &*self._arena.node(node),
@@ -234,7 +238,7 @@ impl<'a> validator::Options for RegExpParserState<'a> {
 
         self._arena.node_mut(node).thrush(|mut node| {
             node.set_end(end);
-            node.set_raw(self.source[start..end].to_owned());
+            node.set_raw(self.source()[start..end].to_owned());
         });
         *self._node.borrow_mut() = self._arena.node(node).maybe_parent();
     }
@@ -262,7 +266,7 @@ impl<'a> validator::Options for RegExpParserState<'a> {
             Some(parent),
             self._arena.node(element).start(),
             end,
-            self.source[self._arena.node(element).start()..end].to_owned(),
+            self.source()[self._arena.node(element).start()..end].to_owned(),
             min,
             max,
             greedy,
@@ -313,7 +317,7 @@ impl<'a> validator::Options for RegExpParserState<'a> {
 
         self._arena.node_mut(node).thrush(|mut node| {
             node.set_end(end);
-            node.set_raw(self.source[start..end].to_owned());
+            node.set_raw(self.source()[start..end].to_owned());
         });
         *self._node.borrow_mut() = self._arena.node(node).maybe_parent();
     }
@@ -326,7 +330,7 @@ impl<'a> validator::Options for RegExpParserState<'a> {
             Some(parent),
             start,
             end,
-            self.source[start..end].to_owned(),
+            self.source()[start..end].to_owned(),
             kind,
             None,
             None,
@@ -352,7 +356,7 @@ impl<'a> validator::Options for RegExpParserState<'a> {
             Some(parent),
             start,
             end,
-            self.source[start..end].to_owned(),
+            self.source()[start..end].to_owned(),
             kind,
             Some(negate),
             None,
@@ -372,7 +376,7 @@ impl<'a> validator::Options for RegExpParserState<'a> {
             Some(parent),
             start,
             end,
-            self.source[start..end].to_owned(),
+            self.source()[start..end].to_owned(),
             kind,
             None,
             None,
@@ -397,7 +401,7 @@ impl<'a> validator::Options for RegExpParserState<'a> {
             Some(parent),
             start,
             end,
-            self.source[start..end].to_owned(),
+            self.source()[start..end].to_owned(),
             kind,
             None,
             None,
@@ -416,8 +420,8 @@ impl<'a> validator::Options for RegExpParserState<'a> {
         start: usize,
         end: usize,
         kind: CharacterKind,
-        key: &str,
-        value: Option<&str>,
+        key: &[u16],
+        value: Option<&[u16]>,
         negate: bool,
         strings: bool,
     ) {
@@ -441,7 +445,7 @@ impl<'a> validator::Options for RegExpParserState<'a> {
             Some(parent),
             start,
             end,
-            self.source[start..end].to_owned(),
+            self.source()[start..end].to_owned(),
             kind,
             Some(strings),
             Some(key.to_owned()),
@@ -466,7 +470,7 @@ impl<'a> validator::Options for RegExpParserState<'a> {
             Some(parent),
             start,
             end,
-            self.source[start..end].to_owned(),
+            self.source()[start..end].to_owned(),
             value,
         ));
         match &mut *self._arena.node_mut(parent) {
@@ -485,7 +489,7 @@ impl<'a> validator::Options for RegExpParserState<'a> {
             Some(parent),
             start,
             end,
-            self.source[start..end].to_owned(),
+            self.source()[start..end].to_owned(),
             ref_.clone(),
             Default::default(),
         ));
@@ -534,7 +538,7 @@ impl<'a> validator::Options for RegExpParserState<'a> {
 
         self._arena.node_mut(node).thrush(|mut node| {
             node.set_end(end);
-            node.set_raw(self.source[start..end].to_owned());
+            node.set_raw(self.source()[start..end].to_owned());
         });
         *self._node.borrow_mut() = Some(parent);
 
@@ -613,7 +617,7 @@ impl<'a> validator::Options for RegExpParserState<'a> {
             Some(parent),
             start,
             end,
-            self.source[start..end].to_owned(),
+            self.source()[start..end].to_owned(),
             min,
             max,
         ));
@@ -665,7 +669,7 @@ impl<'a> validator::Options for RegExpParserState<'a> {
             Some(parent),
             start,
             end,
-            self.source[start..end].to_owned(),
+            self.source()[start..end].to_owned(),
             left,
             right,
         ));
@@ -716,7 +720,7 @@ impl<'a> validator::Options for RegExpParserState<'a> {
             Some(parent),
             start,
             end,
-            self.source[start..end].to_owned(),
+            self.source()[start..end].to_owned(),
             left,
             right,
         ));
@@ -764,7 +768,7 @@ impl<'a> validator::Options for RegExpParserState<'a> {
 
         self._arena.node_mut(node).thrush(|mut node| {
             node.set_end(end);
-            node.set_raw(self.source[start..end].to_owned());
+            node.set_raw(self.source()[start..end].to_owned());
         });
         *self._node.borrow_mut() = Some(parent);
     }
@@ -800,7 +804,7 @@ impl<'a> validator::Options for RegExpParserState<'a> {
 
         self._arena.node_mut(node).thrush(|mut node| {
             node.set_end(end);
-            node.set_raw(self.source[start..end].to_owned());
+            node.set_raw(self.source()[start..end].to_owned());
         });
         *self._node.borrow_mut() = self._arena.node(node).maybe_parent();
     }
@@ -824,10 +828,30 @@ impl<'a> RegExpParser<'a> {
 
     pub fn parse_literal(
         &mut self,
-        source: &str,
+        source: &[u16],
         start: Option<usize>,
         end: Option<usize>,
     ) -> Result<Id<Node>> {
-        unimplemented!()
+        let start = start.unwrap_or(0);
+        let end = end.unwrap_or_else(|| source.len());
+        *self._state.source.borrow_mut() = source.to_owned();
+        self._validator.validate_literal(
+            source,
+            Some(start),
+            Some(end),
+        )?;
+        let pattern = self._state.pattern();
+        let flags = self._state.flags();
+        let literal = self._arena.alloc_node(Node::new_reg_exp_literal(
+            None,
+            start,
+            end,
+            source.to_owned(),
+            pattern,
+            flags,
+        ));
+        self._arena.node_mut(pattern).set_parent(Some(literal));
+        self._arena.node_mut(flags).set_parent(Some(literal));
+        Ok(literal)
     }
 }

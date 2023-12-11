@@ -18,7 +18,7 @@ fn get_single_surrogate_pair_code_point(values: &[u16]) -> CodePoint {
 
 pub struct Reader {
     _use_unicode_impl: bool,
-    _s_between_start_and_end: Vec<u16>,
+    _s: Vec<u16>,
     _i: usize,
     _start: usize,
     _end: usize,
@@ -35,7 +35,7 @@ impl Default for Reader {
     fn default() -> Self {
         Self {
             _use_unicode_impl: Default::default(),
-            _s_between_start_and_end: Default::default(),
+            _s: Default::default(),
             _i: Default::default(),
             _start: Default::default(),
             _end: Default::default(),
@@ -53,18 +53,12 @@ impl Default for Reader {
 impl Reader {
     fn at(&self, i: usize) -> Option<CodePoint> {
         (i < self._end).then(|| {
-            let index = self.passed_index_to_internal_index(i);
-            let possibly_first_half_of_surrogate_pair = self._s_between_start_and_end[index];
+            let possibly_first_half_of_surrogate_pair = self._s[i];
             if !self._use_unicode_impl || !is_surrogate_code_point(possibly_first_half_of_surrogate_pair) {
                 return possibly_first_half_of_surrogate_pair.into();
             }
-            get_single_surrogate_pair_code_point(&self._s_between_start_and_end[index..=index + 1])
+            get_single_surrogate_pair_code_point(&self._s[i..=i + 1])
         })
-    }
-
-    fn passed_index_to_internal_index(&self, index: usize) -> usize {
-        assert!(index >= self._start && index < self._end);
-        index - self._start
     }
 
     fn width(&self, c: Option<CodePoint>) -> usize {
@@ -94,10 +88,10 @@ impl Reader {
         self._cp4
     }
 
-    pub fn reset(&mut self, source: &str, start: usize, end: usize, u_flag: bool) {
+    pub fn reset(&mut self, source: &[u16], start: usize, end: usize, u_flag: bool) {
         self._use_unicode_impl = u_flag;
         self._start = start;
-        self._s_between_start_and_end = source[start..end].encode_utf16().collect();
+        self._s = source.to_owned();
         self._end = end;
         self.rewind(start);
     }

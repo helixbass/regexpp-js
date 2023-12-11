@@ -28,7 +28,7 @@ pub fn new_reg_exp_syntax_error(
         RegExpValidatorSourceContextKind::Literal => {
             let literal = &src_ctx.source[src_ctx.start..src_ctx.end];
             if let Some(literal) = literal.non_empty() {
-                source = format!(": {literal}").into();
+                source = format!(": {}", String::from_utf16(literal).unwrap()).into();
             }
         }
         RegExpValidatorSourceContextKind::Pattern => {
@@ -42,7 +42,7 @@ pub fn new_reg_exp_syntax_error(
             } else {
                 ""
             });
-            source = format!(": /{pattern}/{flags_text}").into();
+            source = format!(": /{}/{flags_text}", String::from_utf16(pattern).unwrap()).into();
         }
         _ => ()
     }

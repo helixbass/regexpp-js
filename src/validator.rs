@@ -137,7 +137,7 @@ pub enum RegExpValidatorSourceContextKind {
 }
 
 pub struct RegExpValidatorSourceContext {
-    pub source: String,
+    pub source: Vec<u16>,
     pub start: usize,
     pub end: usize,
     pub kind: RegExpValidatorSourceContextKind,
@@ -178,7 +178,7 @@ pub enum CharacterKind {
 #[serde(untagged)]
 pub enum CapturingGroupKey {
     Index(usize),
-    Name(String),
+    Name(Vec<u16>),
 }
 
 pub trait Options {
@@ -195,8 +195,8 @@ pub trait Options {
     fn on_alternative_leave(&self, start: usize, end: usize, index: usize) {}
     fn on_group_enter(&self, start: usize) {}
     fn on_group_leave(&self, start: usize, end: usize) {}
-    fn on_capturing_group_enter(&self, start: usize, name: Option<&str>) {}
-    fn on_capturing_group_leave(&self, start: usize, end: usize, name: Option<&str>) {}
+    fn on_capturing_group_enter(&self, start: usize, name: Option<&[u16]>) {}
+    fn on_capturing_group_leave(&self, start: usize, end: usize, name: Option<&[u16]>) {}
     fn on_quantifier(&self, start: usize, end: usize, min: usize, max: usize, greedy: bool) {}
     fn on_lookaround_assertion_enter(&self, start: usize, kind: AssertionKind, negate: bool) {}
     fn on_lookaround_assertion_leave(
@@ -224,8 +224,8 @@ pub trait Options {
         start: usize,
         end: usize,
         kind: CharacterKind,
-        key: &str,
-        value: Option<&str>,
+        key: &[u16],
+        value: Option<&[u16]>,
         negate: bool,
         strings: bool,
     ) {
@@ -276,6 +276,12 @@ struct RaiseContext {
     unicode_sets: Option<bool>,
 }
 
+fn bmp_char_to_utf_16(ch: char) -> u16 {
+    let mut buffer = [0; 1];
+    ch.encode_utf16(&mut buffer);
+    buffer[0]
+}
+
 pub struct RegExpValidator<'a> {
     _options: Rc<dyn Options + 'a>,
     _reader: Reader,
@@ -309,7 +315,7 @@ impl<'a> RegExpValidator<'a> {
 
     pub fn validate_literal(
         &mut self,
-        source: &str,
+        source: &[u16],
         start: Option<usize>,
         end: Option<usize>,
     ) -> Result<(), RegExpSyntaxError> {
@@ -329,8 +335,8 @@ impl<'a> RegExpValidator<'a> {
         self.on_literal_enter(start);
         if self.eat(SOLIDUS) && self.eat_reg_exp_body()? && self.eat(SOLIDUS) {
             let flag_start = self.index();
-            let unicode = source[flag_start..].contains('u');
-            let unicode_sets = source[flag_start..].contains('v');
+            let unicode = source[flag_start..].contains(&bmp_char_to_utf_16('u'));
+            let unicode_sets = source[flag_start..].contains(&bmp_char_to_utf_16('v'));
             self.validate_flags_internal(source, flag_start, end)?;
             self.validate_pattern_internal(
                 source,
@@ -353,7 +359,7 @@ impl<'a> RegExpValidator<'a> {
 
     pub fn validate_flags(
         &mut self,
-        source: &str,
+        source: &[u16],
         start: Option<usize>,
         end: Option<usize>,
     ) -> Result<(), RegExpSyntaxError> {
@@ -370,7 +376,7 @@ impl<'a> RegExpValidator<'a> {
 
     pub fn validate_pattern(
         &mut self,
-        source: &str,
+        source: &[u16],
         start: Option<usize>,
         end: Option<usize>,
         flags: Option<ValidatePatternFlags>,
@@ -388,7 +394,7 @@ impl<'a> RegExpValidator<'a> {
 
     fn validate_pattern_internal(
         &mut self,
-        source: &str,
+        source: &[u16],
         start: usize,
         end: usize,
         flags: Option<ValidatePatternFlags>,
@@ -414,7 +420,7 @@ impl<'a> RegExpValidator<'a> {
 
     fn validate_flags_internal(
         &mut self,
-        source: &str,
+        source: &[u16],
         start: usize,
         end: usize,
     ) -> Result<(), RegExpSyntaxError> {
@@ -427,8 +433,7 @@ impl<'a> RegExpValidator<'a> {
         let mut dot_all = false;
         let mut has_indices = false;
         let mut unicode_sets = false;
-        let source_utf16 = source[start..end].encode_utf16().collect::<Vec<_>>();
-        for flag in source_utf16 {
+        for &flag in source {
             let flag: CodePoint = flag.into();
 
             if existing_flags.contains(&flag) {
@@ -658,7 +663,7 @@ impl<'a> RegExpValidator<'a> {
         self._reader.next_code_point3()
     }
 
-    fn reset(&mut self, source: &str, start: usize, end: usize) {
+    fn reset(&mut self, source: &[u16], start: usize, end: usize) {
         self._reader.reset(source, start, end, self._unicode_mode);
     }
 
@@ -1298,6 +1303,8 @@ mod tests {
     use serde_json::json;
     use speculoos::prelude::*;
 
+    use crate::ast::str_to_wtf_16;
+
     use super::*;
 
     fn validator<'a>() -> RegExpValidator<'a> {
@@ -1311,19 +1318,19 @@ mod tests {
         flags: ValidatePatternFlags,
     ) -> RegExpSyntaxError {
         validator()
-            .validate_pattern(source, Some(start), Some(end), Some(flags))
+            .validate_pattern(&str_to_wtf_16(source), Some(start), Some(end), Some(flags))
             .expect_err("Should fail, but succeeded.")
     }
 
     fn get_error_for_flags(source: &str, start: usize, end: usize) -> RegExpSyntaxError {
         validator()
-            .validate_flags(source, Some(start), Some(end))
+            .validate_flags(&str_to_wtf_16(source), Some(start), Some(end))
             .expect_err("Should fail, but succeeded.")
     }
 
     fn get_error_for_literal(source: &str, start: usize, end: usize) -> RegExpSyntaxError {
         validator()
-            .validate_literal(source, Some(start), Some(end))
+            .validate_literal(&str_to_wtf_16(source), Some(start), Some(end))
             .expect_err("Should fail, but succeeded.")
     }
 
