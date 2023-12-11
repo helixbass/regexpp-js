@@ -203,10 +203,10 @@ pub trait Options {
     fn on_edge_assertion(&self, start: usize, end: usize, kind: AssertionKind) {}
     fn on_word_boundary_assertion(&self, start: usize, end: usize, kind: AssertionKind, negate: bool) {}
     fn on_any_character_set(&self, start: usize, end: usize, kind: CharacterKind) {}
-    fn on_escape_character_set(&self, start: usize, TODO: usize, kind: CharacterKind, b: bool) {}
-    fn on_unicode_property_character_set(&self, start: usize, TODO: usize, kind: CharacterKind, a: &str, b: Option<&str>, c: bool, d: bool) {}
+    fn on_escape_character_set(&self, start: usize, end: usize, kind: CharacterKind, negate: bool) {}
+    fn on_unicode_property_character_set(&self, start: usize, end: usize, kind: CharacterKind, key: &str, value: Option<&str>, negate: bool, strings: bool) {}
     fn on_character(&self, start: usize, end: usize, value: CodePoint) {}
-    fn on_backreference(&self, start: usize, TODO: usize, a: CapturingGroupKey) {}
+    fn on_backreference(&self, start: usize, end: usize, ref_: &CapturingGroupKey) {}
     fn on_character_class_enter(&self, start: usize, negate: bool, unicode_sets: bool) {}
     fn on_character_class_leave(&self, start: usize, end: usize, negate: bool) {}
     fn on_character_class_range(&self, start: usize, end: usize, min: CodePoint, max: CodePoint) {}

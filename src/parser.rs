@@ -8,8 +8,9 @@ use crate::{
     arena::AllArenas,
     ast::{Flags, Node, NodeBase, NodeInterface},
     ecma_versions::{EcmaVersion, LATEST_ECMA_VERSION},
-    validator::{self, AssertionKind, CapturingGroupKey, RegExpFlags},
-    RegExpValidator, Result,
+    unicode::HYPHEN_MINUS,
+    validator::{self, AssertionKind, CapturingGroupKey, CharacterKind, RegExpFlags},
+    CodePoint, RegExpValidator, Result,
 };
 
 #[derive(Copy, Clone, Default, Deserialize)]
@@ -19,12 +20,23 @@ pub struct Options {
     ecma_version: Option<EcmaVersion>,
 }
 
+fn is_class_set_operand(node: &Node) -> bool {
+    matches!(
+        node,
+        Node::Character(_)
+            | Node::CharacterSet(_)
+            | Node::CharacterClass(_)
+            | Node::ExpressionCharacterClass(_)
+            | Node::ClassStringDisjunction(_)
+    )
+}
+
 struct RegExpParserState<'a> {
     _arena: &'a AllArenas,
     strict: bool,
     ecma_version: EcmaVersion,
     _node: RefCell<Option<Id<Node> /*AppendableNode*/>>,
-    _expression_buffer_map: HashMap<Id<Node>, Id<Node>>,
+    _expression_buffer_map: RefCell<HashMap<Id<Node>, Id<Node>>>,
     _flags: RefCell<Option<Id<Node> /*Flags*/>>,
     _backreferences: RefCell<Vec<Id<Node> /*Backreference*/>>,
     _capturing_groups: RefCell<Vec<Id<Node> /*CapturingGroup*/>>,
@@ -121,7 +133,7 @@ impl<'a> validator::Options for RegExpParserState<'a> {
             self._arena
                 .node_mut(reference)
                 .as_backreference_mut()
-                .resolved = group;
+                .resolved = Some(group);
             self._arena
                 .node_mut(group)
                 .as_capturing_group_mut()
@@ -352,7 +364,317 @@ impl<'a> validator::Options for RegExpParserState<'a> {
             .push(node);
     }
 
-    fn on_any_character_set(&self, start: usize, end: usize, kind: validator::CharacterKind) {}
+    fn on_any_character_set(&self, start: usize, end: usize, kind: CharacterKind) {
+        let parent = self._node.borrow().unwrap();
+        assert!(matches!(&*self._arena.node(parent), Node::Alternative(_)));
+
+        let node = self._arena.alloc_node(Node::new_character_set(
+            Some(parent),
+            start,
+            end,
+            self.source[start..end].to_owned(),
+            kind,
+            None,
+            None,
+            None,
+            None,
+        ));
+        self._arena
+            .node_mut(parent)
+            .as_alternative_mut()
+            .elements
+            .push(node);
+    }
+
+    fn on_escape_character_set(&self, start: usize, end: usize, kind: CharacterKind, negate: bool) {
+        let parent = self._node.borrow().unwrap();
+        assert!(matches!(
+            &*self._arena.node(parent),
+            Node::Alternative(_) | Node::CharacterClass(_)
+        ));
+
+        let node = self._arena.alloc_node(Node::new_character_set(
+            Some(parent),
+            start,
+            end,
+            self.source[start..end].to_owned(),
+            kind,
+            None,
+            None,
+            None,
+            Some(negate),
+        ));
+        self._arena
+            .node_mut(parent)
+            .as_alternative_mut()
+            .elements
+            .push(node);
+    }
+
+    fn on_unicode_property_character_set(
+        &self,
+        start: usize,
+        end: usize,
+        kind: CharacterKind,
+        key: &str,
+        value: Option<&str>,
+        negate: bool,
+        strings: bool,
+    ) {
+        let parent = self._node.borrow().unwrap();
+        assert!(matches!(
+            &*self._arena.node(parent),
+            Node::Alternative(_) | Node::CharacterClass(_)
+        ));
+
+        if strings {
+            assert!(
+                !(matches!(
+                    &*self._arena.node(parent),
+                    Node::CharacterClass(parent) if !parent.unicode_sets
+                ) || negate
+                    || value.is_some())
+            );
+        }
+
+        let node = self._arena.alloc_node(Node::new_character_set(
+            Some(parent),
+            start,
+            end,
+            self.source[start..end].to_owned(),
+            kind,
+            Some(strings),
+            Some(key.to_owned()),
+            value.map(ToOwned::to_owned),
+            Some(negate),
+        ));
+        match &mut *self._arena.node_mut(parent) {
+            Node::Alternative(parent) => parent.elements.push(node),
+            Node::CharacterClass(parent) => parent.elements.push(node),
+            _ => unreachable!(),
+        }
+    }
+
+    fn on_character(&self, start: usize, end: usize, value: CodePoint) {
+        let parent = self._node.borrow().unwrap();
+        assert!(matches!(
+            &*self._arena.node(parent),
+            Node::Alternative(_) | Node::CharacterClass(_) | Node::StringAlternative(_)
+        ));
+
+        let node = self._arena.alloc_node(Node::new_character(
+            Some(parent),
+            start,
+            end,
+            self.source[start..end].to_owned(),
+            value,
+        ));
+        match &mut *self._arena.node_mut(parent) {
+            Node::Alternative(parent) => parent.elements.push(node),
+            Node::CharacterClass(parent) => parent.elements.push(node),
+            Node::StringAlternative(parent) => parent.elements.push(node),
+            _ => unreachable!(),
+        }
+    }
+
+    fn on_backreference(&self, start: usize, end: usize, ref_: &CapturingGroupKey) {
+        let parent = self._node.borrow().unwrap();
+        assert!(matches!(&*self._arena.node(parent), Node::Alternative(_)));
+
+        let node = self._arena.alloc_node(Node::new_backreference(
+            Some(parent),
+            start,
+            end,
+            self.source[start..end].to_owned(),
+            ref_.clone(),
+            Default::default(),
+        ));
+        self._arena
+            .node_mut(parent)
+            .as_alternative_mut()
+            .elements
+            .push(node);
+        self._backreferences.borrow_mut().push(node);
+    }
+
+    fn on_character_class_enter(&self, start: usize, negate: bool, unicode_sets: bool) {
+        let parent = self._node.borrow().unwrap();
+        assert!(
+            matches!(&*self._arena.node(parent), Node::Alternative(_))
+                || matches!(
+                    &*self._arena.node(parent),
+                    Node::CharacterClass(node) if node.unicode_sets && unicode_sets
+                )
+        );
+        let node = self._arena.alloc_node(Node::new_character_class(
+            Some(parent),
+            start,
+            start,
+            Default::default(),
+            unicode_sets,
+            negate,
+            Default::default(),
+        ));
+        *self._node.borrow_mut() = Some(node);
+        match &mut *self._arena.node_mut(parent) {
+            Node::Alternative(parent) => parent.elements.push(node),
+            Node::CharacterClass(parent) => parent.elements.push(node),
+            _ => unreachable!(),
+        }
+    }
+
+    fn on_character_class_leave(&self, start: usize, end: usize, _negate: bool) {
+        let node = self._node.borrow().unwrap();
+        assert!(matches!(&*self._arena.node(node), Node::CharacterClass(_)));
+        let parent = self._arena.node(node).maybe_parent().unwrap();
+        assert!(matches!(
+            &*self._arena.node(parent),
+            Node::Alternative(_) | Node::CharacterClass(_)
+        ));
+
+        self._arena.node_mut(node).thrush(|mut node| {
+            node.set_end(end);
+            node.set_raw(self.source[start..end].to_owned());
+        });
+        *self._node.borrow_mut() = Some(parent);
+
+        let Some(expression) = self._expression_buffer_map.borrow().get(&node).copied() else {
+            return;
+        };
+        assert!(self
+            ._arena
+            .node(node)
+            .as_character_class()
+            .elements
+            .is_empty());
+        self._expression_buffer_map.borrow_mut().remove(&node);
+
+        let new_node = self._arena.alloc_node(Node::new_expression_character_class(
+            Some(parent),
+            self._arena.node(node).start(),
+            self._arena.node(node).end(),
+            self._arena.node(node).raw().to_owned(),
+            self._arena.node(node).as_character_class().negate,
+            expression,
+        ));
+        self._arena.node_mut(expression).set_parent(Some(new_node));
+        assert!(
+            Some(node)
+                == match &mut *self._arena.node_mut(parent) {
+                    Node::Alternative(parent) => parent.elements.pop(),
+                    Node::CharacterClass(parent) => parent.elements.pop(),
+                    _ => unreachable!(),
+                }
+        );
+        match &mut *self._arena.node_mut(parent) {
+            Node::Alternative(parent) => parent.elements.push(new_node),
+            Node::CharacterClass(parent) => parent.elements.push(new_node),
+            _ => unreachable!(),
+        }
+    }
+
+    fn on_character_class_range(&self, start: usize, end: usize, _min: CodePoint, _max: CodePoint) {
+        let parent = self._node.borrow().unwrap();
+        assert!(matches!(
+            &*self._arena.node(parent),
+            Node::CharacterClass(_)
+        ));
+        let max = self
+            ._arena
+            .node_mut(parent)
+            .as_character_class_mut()
+            .elements
+            .pop()
+            .unwrap();
+        assert!(matches!(&*self._arena.node(max), Node::Character(_)));
+        if !self._arena.node(parent).as_character_class().unicode_sets {
+            let hyphen = self
+                ._arena
+                .node_mut(parent)
+                .as_character_class_mut()
+                .elements
+                .pop()
+                .unwrap();
+            assert!(matches!(
+                &*self._arena.node(hyphen),
+                Node::Character(hyphen) if hyphen.value == HYPHEN_MINUS
+            ));
+        }
+        let min = self
+            ._arena
+            .node_mut(parent)
+            .as_character_class_mut()
+            .elements
+            .pop()
+            .unwrap();
+        assert!(matches!(&*self._arena.node(min), Node::Character(_)));
+
+        let node = self._arena.alloc_node(Node::new_character_class_range(
+            Some(parent),
+            start,
+            end,
+            self.source[start..end].to_owned(),
+            min,
+            max,
+        ));
+        self._arena.node_mut(min).set_parent(Some(node));
+        self._arena.node_mut(max).set_parent(Some(node));
+        self._arena
+            .node_mut(parent)
+            .as_character_class_mut()
+            .elements
+            .push(node);
+    }
+
+    fn on_class_intersection(&self, start: usize, end: usize) {
+        let parent = self._node.borrow().unwrap();
+        assert!(matches!(
+            &*self._arena.node(parent),
+            Node::CharacterClass(parent) if parent.unicode_sets
+        ));
+        let right = self
+            ._arena
+            .node_mut(parent)
+            .as_character_class_mut()
+            .elements
+            .pop()
+            .unwrap();
+        let left = self
+            ._expression_buffer_map
+            .borrow()
+            .get(&parent)
+            .copied()
+            .unwrap_or_else(|| {
+                self._arena
+                    .node_mut(parent)
+                    .as_character_class_mut()
+                    .elements
+                    .pop()
+                    .unwrap()
+            });
+        assert!(!matches!(
+            &*self._arena.node(left),
+            Node::ClassSubtraction(_)
+        ),);
+        assert!(
+            !(!matches!(&*self._arena.node(left), Node::ClassIntersection(_))
+                && !is_class_set_operand(&self._arena.node(left)))
+        );
+        assert!(is_class_set_operand(&self._arena.node(right)));
+        let node = self._arena.alloc_node(Node::new_class_intersection(
+            Some(parent),
+            start,
+            end,
+            self.source[start..end].to_owned(),
+            left,
+            right,
+        ));
+        self._arena.node_mut(left).set_parent(Some(node));
+        self._arena.node_mut(right).set_parent(Some(node));
+        self._expression_buffer_map
+            .borrow_mut()
+            .insert(parent, node);
+    }
 
     fn on_literal_enter(&self, start: usize) {}
 
@@ -361,46 +683,6 @@ impl<'a> validator::Options for RegExpParserState<'a> {
     fn on_disjunction_enter(&self, start: usize) {}
 
     fn on_disjunction_leave(&self, start: usize, end: usize) {}
-
-    fn on_escape_character_set(
-        &self,
-        start: usize,
-        TODO: usize,
-        kind: validator::CharacterKind,
-        b: bool,
-    ) {
-    }
-
-    fn on_unicode_property_character_set(
-        &self,
-        start: usize,
-        TODO: usize,
-        kind: validator::CharacterKind,
-        a: &str,
-        b: Option<&str>,
-        c: bool,
-        d: bool,
-    ) {
-    }
-
-    fn on_character(&self, start: usize, end: usize, value: crate::CodePoint) {}
-
-    fn on_backreference(&self, start: usize, TODO: usize, a: CapturingGroupKey) {}
-
-    fn on_character_class_enter(&self, start: usize, negate: bool, unicode_sets: bool) {}
-
-    fn on_character_class_leave(&self, start: usize, end: usize, negate: bool) {}
-
-    fn on_character_class_range(
-        &self,
-        start: usize,
-        end: usize,
-        min: crate::CodePoint,
-        max: crate::CodePoint,
-    ) {
-    }
-
-    fn on_class_intersection(&self, start: usize, end: usize) {}
 
     fn on_class_subtraction(&self, start: usize, end: usize) {}
 

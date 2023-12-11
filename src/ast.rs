@@ -198,6 +198,160 @@ impl Node {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_character_set(
+        parent: Option<Id<Node>>,
+        start: usize,
+        end: usize,
+        raw: Vec<u16>,
+        kind: CharacterKind,
+        strings: Option<bool>,
+        key: Option<String>,
+        value: Option<String>,
+        negate: Option<bool>,
+    ) -> Self {
+        Self::CharacterSet(CharacterSet {
+            _base: NodeBase {
+                _arena_id: Default::default(),
+                parent,
+                start,
+                end,
+                raw,
+            },
+            kind,
+            strings,
+            key,
+            value,
+            negate,
+        })
+    }
+
+    pub fn new_character(
+        parent: Option<Id<Node>>,
+        start: usize,
+        end: usize,
+        raw: Vec<u16>,
+        value: CodePoint,
+    ) -> Self {
+        Self::Character(Character {
+            _base: NodeBase {
+                _arena_id: Default::default(),
+                parent,
+                start,
+                end,
+                raw,
+            },
+            value,
+        })
+    }
+
+    pub fn new_backreference(
+        parent: Option<Id<Node>>,
+        start: usize,
+        end: usize,
+        raw: Vec<u16>,
+        ref_: CapturingGroupKey,
+        resolved: Option<Id<Node>>,
+    ) -> Self {
+        Self::Backreference(Backreference {
+            _base: NodeBase {
+                _arena_id: Default::default(),
+                parent,
+                start,
+                end,
+                raw,
+            },
+            ref_,
+            resolved,
+        })
+    }
+
+    pub fn new_character_class(
+        parent: Option<Id<Node>>,
+        start: usize,
+        end: usize,
+        raw: Vec<u16>,
+        unicode_sets: bool,
+        negate: bool,
+        elements: Vec<Id<Node> /*CharacterClassElement*/>,
+    ) -> Self {
+        Self::CharacterClass(CharacterClass {
+            _base: NodeBase {
+                _arena_id: Default::default(),
+                parent,
+                start,
+                end,
+                raw,
+            },
+            unicode_sets,
+            negate,
+            elements,
+        })
+    }
+
+    pub fn new_expression_character_class(
+        parent: Option<Id<Node>>,
+        start: usize,
+        end: usize,
+        raw: Vec<u16>,
+        negate: bool,
+        expression: Id<Node>,
+    ) -> Self {
+        Self::ExpressionCharacterClass(ExpressionCharacterClass {
+            _base: NodeBase {
+                _arena_id: Default::default(),
+                parent,
+                start,
+                end,
+                raw,
+            },
+            negate,
+            expression,
+        })
+    }
+
+    pub fn new_character_class_range(
+        parent: Option<Id<Node>>,
+        start: usize,
+        end: usize,
+        raw: Vec<u16>,
+        min: Id<Node>,
+        max: Id<Node>,
+    ) -> Self {
+        Self::CharacterClassRange(CharacterClassRange {
+            _base: NodeBase {
+                _arena_id: Default::default(),
+                parent,
+                start,
+                end,
+                raw,
+            },
+            min,
+            max,
+        })
+    }
+
+    pub fn new_class_intersection(
+        parent: Option<Id<Node>>,
+        start: usize,
+        end: usize,
+        raw: Vec<u16>,
+        left: Id<Node>,
+        right: Id<Node>,
+    ) -> Self {
+        Self::ClassIntersection(ClassIntersection {
+            _base: NodeBase {
+                _arena_id: Default::default(),
+                parent,
+                start,
+                end,
+                raw,
+            },
+            left,
+            right,
+        })
+    }
+
     pub fn as_backreference(&self) -> &Backreference {
         match self {
             Self::Backreference(value) => value,
@@ -229,6 +383,20 @@ impl Node {
     pub fn as_alternative_mut(&mut self) -> &mut Alternative {
         match self {
             Self::Alternative(value) => value,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn as_character_class(&self) -> &CharacterClass {
+        match self {
+            Self::CharacterClass(value) => value,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn as_character_class_mut(&mut self) -> &mut CharacterClass {
+        match self {
+            Self::CharacterClass(value) => value,
             _ => unreachable!(),
         }
     }
@@ -681,7 +849,7 @@ pub fn to_node_unresolved(
                 end: node._base.end,
                 raw: node._base.raw.to_owned(),
                 ref_: node.ref_.clone(),
-                resolved: get_relative_path(node._base._arena_id.unwrap(), node.resolved, path_map),
+                resolved: get_relative_path(node._base._arena_id.unwrap(), node.resolved.unwrap(), path_map),
             }))
         }
         Node::Character(node) => NodeUnresolved::Character(Box::new(CharacterUnresolved {
@@ -1058,7 +1226,7 @@ pub struct CharacterUnresolved {
 pub struct Backreference {
     _base: NodeBase,
     pub ref_: CapturingGroupKey,
-    pub resolved: Id<Node /*CapturingGroup*/>,
+    pub resolved: Option<Id<Node /*CapturingGroup*/>>,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
