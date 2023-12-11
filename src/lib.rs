@@ -15,6 +15,7 @@ use arena::AllArenas;
 use ast::Node;
 pub(crate) use ecma_versions::EcmaVersion;
 use id_arena::Id;
+use parser::RegExpParser;
 pub use reader::{CodePoint, Reader};
 pub use regexp_syntax_error::RegExpSyntaxError;
 pub use validator::RegExpValidator;
@@ -22,11 +23,11 @@ pub use validator::RegExpValidator;
 pub type Result<T> = std::result::Result<T, RegExpSyntaxError>;
 
 pub fn parse_reg_exp_literal<'a>(
-    source: &str,
+    source: &'a str,
     options: Option<parser::Options>,
     arena: &mut AllArenas<'a>,
 ) -> Result<Id<Node<'a>> /*AST.RegExpLiteral*/> {
-    unimplemented!()
+    RegExpParser::new(arena, options).parse_literal(source, None, None)
 }
 
 #[cfg(test)]

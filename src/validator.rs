@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, rc::Rc};
 
 use derive_builder::Builder;
 use once_cell::sync::Lazy;
@@ -196,44 +196,53 @@ impl<'a> From<CapturingGroupKey<'a>> for CapturingGroupKeyOwned {
     }
 }
 
-#[derive(Default)]
-pub struct Options {
-    strict: Option<bool>,
-    ecma_version: Option<EcmaVersion>,
-    on_literal_enter: Option<Box<dyn FnMut(usize)>>,
-    on_literal_leave: Option<Box<dyn FnMut(usize, usize)>>,
-    on_reg_exp_flags: Option<Box<dyn FnMut(usize, usize, RegExpFlags)>>,
-    on_pattern_enter: Option<Box<dyn FnMut(usize)>>,
-    on_pattern_leave: Option<Box<dyn FnMut(usize, usize)>>,
-    on_disjunction_enter: Option<Box<dyn FnMut(usize)>>,
-    on_disjunction_leave: Option<Box<dyn FnMut(usize, usize)>>,
-    on_alternative_enter: Option<Box<dyn FnMut(usize, usize)>>,
-    on_alternative_leave: Option<Box<dyn FnMut(usize, usize, usize)>>,
-    on_group_enter: Option<Box<dyn FnMut(usize)>>,
-    on_group_leave: Option<Box<dyn FnMut(usize, usize)>>,
-    on_capturing_group_enter: Option<Box<dyn FnMut(usize, Option<&str>)>>,
-    on_capturing_group_leave: Option<Box<dyn FnMut(usize, usize, Option<&str>)>>,
-    on_quantifier: Option<Box<dyn FnMut(usize, usize, usize, usize, bool)>>,
-    on_lookaround_assertion_enter: Option<Box<dyn FnMut(usize, AssertionKind, bool)>>,
-    on_lookaround_assertion_leave: Option<Box<dyn FnMut(usize, usize, AssertionKind, bool)>>,
-    on_edge_assertion: Option<Box<dyn FnMut(usize, usize, AssertionKind)>>,
-    on_word_boundary_assertion: Option<Box<dyn FnMut(usize, usize, AssertionKind, bool)>>,
-    on_any_character_set: Option<Box<dyn FnMut(usize, usize, CharacterKind)>>,
-    on_escape_character_set: Option<Box<dyn FnMut(usize, usize, CharacterKind, bool)>>,
-    on_unicode_property_character_set: Option<
-        Box<dyn FnMut(usize, usize, CharacterKind, &str, Option<&str>, bool, bool)>,
-    >,
-    on_character: Option<Box<dyn FnMut(usize, usize, CodePoint)>>,
-    on_backreference: Option<Box<dyn FnMut(usize, usize, CapturingGroupKey)>>,
-    on_character_class_enter: Option<Box<dyn FnMut(usize, bool, bool)>>,
-    on_character_class_leave: Option<Box<dyn FnMut(usize, usize, bool)>>,
-    on_character_class_range: Option<Box<dyn FnMut(usize, usize, CodePoint, CodePoint)>>,
-    on_class_intersection: Option<Box<dyn FnMut(usize, usize)>>,
-    on_class_subtraction: Option<Box<dyn FnMut(usize, usize)>>,
-    on_class_string_disjunction_enter: Option<Box<dyn FnMut(usize)>>,
-    on_class_string_disjunction_leave: Option<Box<dyn FnMut(usize, usize)>>,
-    on_string_alternative_enter: Option<Box<dyn FnMut(usize, usize)>>,
-    on_string_alternative_leave: Option<Box<dyn FnMut(usize, usize, usize)>>,
+pub trait Options {
+    fn strict(&self) -> Option<bool>;
+    fn ecma_version(&self) -> Option<EcmaVersion>;
+    fn on_literal_enter(&self, start: usize) {}
+    fn on_literal_leave(&self, start: usize, end: usize) {}
+    fn on_reg_exp_flags(&self, start: usize, end: usize, flags: RegExpFlags) {}
+    fn on_pattern_enter(&self, start: usize) {}
+    fn on_pattern_leave(&self, start: usize, end: usize) {}
+    fn on_disjunction_enter(&self, start: usize) {}
+    fn on_disjunction_leave(&self, start: usize, end: usize) {}
+    fn on_alternative_enter(&self, start: usize, index: usize) {}
+    fn on_alternative_leave(&self, start: usize, end: usize, index: usize) {}
+    fn on_group_enter(&self, start: usize) {}
+    fn on_group_leave(&self, start: usize, end: usize) {}
+    fn on_capturing_group_enter(&self, start: usize, TODO: Option<&str>) {}
+    fn on_capturing_group_leave(&self, start: usize, end: usize, TODO: Option<&str>) {}
+    fn on_quantifier(&self, start: usize, TODO: usize, a: usize, b: usize, c: bool) {}
+    fn on_lookaround_assertion_enter(&self, start: usize, kind: AssertionKind, negate: bool) {}
+    fn on_lookaround_assertion_leave(&self, start: usize, end: usize, kind: AssertionKind, negate: bool) {}
+    fn on_edge_assertion(&self, start: usize, end: usize, kind: AssertionKind) {}
+    fn on_word_boundary_assertion(&self, start: usize, end: usize, kind: AssertionKind, negate: bool) {}
+    fn on_any_character_set(&self, start: usize, end: usize, kind: CharacterKind) {}
+    fn on_escape_character_set(&self, start: usize, TODO: usize, kind: CharacterKind, b: bool) {}
+    fn on_unicode_property_character_set(&self, start: usize, TODO: usize, kind: CharacterKind, a: &str, b: Option<&str>, c: bool, d: bool) {}
+    fn on_character(&self, start: usize, end: usize, value: CodePoint) {}
+    fn on_backreference(&self, start: usize, TODO: usize, a: CapturingGroupKey) {}
+    fn on_character_class_enter(&self, start: usize, negate: bool, unicode_sets: bool) {}
+    fn on_character_class_leave(&self, start: usize, end: usize, negate: bool) {}
+    fn on_character_class_range(&self, start: usize, end: usize, min: CodePoint, max: CodePoint) {}
+    fn on_class_intersection(&self, start: usize, end: usize) {}
+    fn on_class_subtraction(&self, start: usize, end: usize) {}
+    fn on_class_string_disjunction_enter(&self, start: usize) {}
+    fn on_class_string_disjunction_leave(&self, start: usize, end: usize) {}
+    fn on_string_alternative_enter(&self, start: usize, TODO: usize) {}
+    fn on_string_alternative_leave(&self, start: usize, TODO: usize, a: usize) {}
+}
+
+struct NoopOptions;
+
+impl Options for NoopOptions {
+    fn strict(&self) -> Option<bool> {
+        None
+    }
+
+    fn ecma_version(&self) -> Option<EcmaVersion> {
+        None
+    }
 }
 
 #[derive(Default, Deserialize)]
@@ -258,7 +267,7 @@ struct RaiseContext {
 }
 
 pub struct RegExpValidator<'a> {
-    _options: Options,
+    _options: Rc<dyn Options>,
     _reader: Reader,
     _unicode_mode: bool,
     _unicode_sets_mode: bool,
@@ -272,9 +281,9 @@ pub struct RegExpValidator<'a> {
 }
 
 impl<'a> RegExpValidator<'a> {
-    pub fn new(options: Option<Options>) -> Self {
+    pub fn new(options: Option<Rc<dyn Options>>) -> Self {
         Self {
-            _options: options.unwrap_or_default(),
+            _options: options.unwrap_or_else(|| Rc::new(NoopOptions)),
             _reader: Default::default(),
             _unicode_mode: Default::default(),
             _unicode_sets_mode: Default::default(),
@@ -464,73 +473,51 @@ impl<'a> RegExpValidator<'a> {
     }
 
     fn strict(&self) -> bool {
-        self._options.strict.unwrap_or_default() || self._unicode_mode
+        self._options.strict().unwrap_or_default() || self._unicode_mode
     }
 
     fn ecma_version(&self) -> EcmaVersion {
-        self._options.ecma_version.unwrap_or(LATEST_ECMA_VERSION)
+        self._options.ecma_version().unwrap_or(LATEST_ECMA_VERSION)
     }
 
     fn on_literal_enter(&mut self, start: usize) {
-        if let Some(on_literal_enter) = self._options.on_literal_enter.as_mut() {
-            on_literal_enter(start);
-        }
+        self._options.on_literal_enter(start);
     }
 
     fn on_literal_leave(&mut self, start: usize, end: usize) {
-        if let Some(on_literal_leave) = self._options.on_literal_leave.as_mut() {
-            on_literal_leave(start, end);
-        }
+        self._options.on_literal_leave(start, end);
     }
 
     fn on_reg_exp_flags(&mut self, start: usize, end: usize, flags: RegExpFlags) {
-        if let Some(on_reg_exp_flags) = self._options.on_reg_exp_flags.as_mut() {
-            on_reg_exp_flags(start, end, flags);
-        }
+        self._options.on_reg_exp_flags(start, end, flags);
     }
 
     fn on_pattern_enter(&mut self, start: usize) {
-        if let Some(on_pattern_enter) = self._options.on_pattern_enter.as_mut() {
-            on_pattern_enter(start);
-        }
+        self._options.on_pattern_enter(start);
     }
 
     fn on_pattern_leave(&mut self, start: usize, end: usize) {
-        if let Some(on_pattern_leave) = self._options.on_pattern_leave.as_mut() {
-            on_pattern_leave(start, end);
-        }
+        self._options.on_pattern_leave(start, end);
     }
 
     fn on_disjunction_enter(&mut self, start: usize) {
-        if let Some(on_disjunction_enter) = self._options.on_disjunction_enter.as_mut() {
-            on_disjunction_enter(start);
-        }
+        self._options.on_disjunction_enter(start);
     }
 
     fn on_disjunction_leave(&mut self, start: usize, end: usize) {
-        if let Some(on_disjunction_leave) = self._options.on_disjunction_leave.as_mut() {
-            on_disjunction_leave(start, end);
-        }
+        self._options.on_disjunction_leave(start, end);
     }
 
     fn on_alternative_enter(&mut self, start: usize, index: usize) {
-        if let Some(on_alternative_enter) = self._options.on_alternative_enter.as_mut() {
-            on_alternative_enter(start, index);
-        }
+        self._options.on_alternative_enter(start, index);
     }
 
     fn on_alternative_leave(&mut self, start: usize, end: usize, index: usize) {
-        if let Some(on_alternative_leave) = self._options.on_alternative_leave.as_mut() {
-            on_alternative_leave(start, end, index);
-        }
+        self._options.on_alternative_leave(start, end, index);
     }
 
     fn on_lookaround_assertion_enter(&mut self, start: usize, kind: AssertionKind, negate: bool) {
-        if let Some(on_lookaround_assertion_enter) =
-            self._options.on_lookaround_assertion_enter.as_mut()
-        {
-            on_lookaround_assertion_enter(start, kind, negate);
-        }
+        self._options.on_lookaround_assertion_enter(start, kind, negate);
     }
 
     fn on_lookaround_assertion_leave(
@@ -540,17 +527,11 @@ impl<'a> RegExpValidator<'a> {
         kind: AssertionKind,
         negate: bool,
     ) {
-        if let Some(on_lookaround_assertion_leave) =
-            self._options.on_lookaround_assertion_leave.as_mut()
-        {
-            on_lookaround_assertion_leave(start, end, kind, negate);
-        }
+        self._options.on_lookaround_assertion_leave(start, end, kind, negate);
     }
 
     fn on_edge_assertion(&mut self, start: usize, end: usize, kind: AssertionKind) {
-        if let Some(on_edge_assertion) = self._options.on_edge_assertion.as_mut() {
-            on_edge_assertion(start, end, kind);
-        }
+        self._options.on_edge_assertion(start, end, kind);
     }
 
     fn on_word_boundary_assertion(
@@ -560,34 +541,23 @@ impl<'a> RegExpValidator<'a> {
         kind: AssertionKind,
         negate: bool,
     ) {
-        if let Some(on_word_boundary_assertion) = self._options.on_word_boundary_assertion.as_mut()
-        {
-            on_word_boundary_assertion(start, end, kind, negate);
-        }
+        self._options.on_word_boundary_assertion(start, end, kind, negate);
     }
 
     fn on_any_character_set(&mut self, start: usize, end: usize, kind: CharacterKind) {
-        if let Some(on_any_character_set) = self._options.on_any_character_set.as_mut() {
-            on_any_character_set(start, end, kind);
-        }
+        self._options.on_any_character_set(start, end, kind);
     }
 
     fn on_character(&mut self, start: usize, end: usize, value: CodePoint) {
-        if let Some(on_character) = self._options.on_character.as_mut() {
-            on_character(start, end, value);
-        }
+        self._options.on_character(start, end, value);
     }
 
     fn on_character_class_enter(&mut self, start: usize, negate: bool, unicode_sets: bool) {
-        if let Some(on_character_class_enter) = self._options.on_character_class_enter.as_mut() {
-            on_character_class_enter(start, negate, unicode_sets);
-        }
+        self._options.on_character_class_enter(start, negate, unicode_sets);
     }
 
     fn on_character_class_leave(&mut self, start: usize, end: usize, negate: bool) {
-        if let Some(on_character_class_leave) = self._options.on_character_class_leave.as_mut() {
-            on_character_class_leave(start, end, negate);
-        }
+        self._options.on_character_class_leave(start, end, negate);
     }
 
     fn on_character_class_range(
@@ -597,37 +567,23 @@ impl<'a> RegExpValidator<'a> {
         min: CodePoint,
         max: CodePoint,
     ) {
-        if let Some(on_character_class_range) = self._options.on_character_class_range.as_mut() {
-            on_character_class_range(start, end, min, max);
-        }
+        self._options.on_character_class_range(start, end, min, max);
     }
 
     fn on_class_intersection(&mut self, start: usize, end: usize) {
-        if let Some(on_class_intersection) = self._options.on_class_intersection.as_mut() {
-            on_class_intersection(start, end);
-        }
+        self._options.on_class_intersection(start, end);
     }
 
     fn on_class_subtraction(&mut self, start: usize, end: usize) {
-        if let Some(on_class_subtraction) = self._options.on_class_subtraction.as_mut() {
-            on_class_subtraction(start, end);
-        }
+        self._options.on_class_subtraction(start, end);
     }
 
     fn on_class_string_disjunction_enter(&mut self, start: usize) {
-        if let Some(on_class_string_disjunction_enter) =
-            self._options.on_class_string_disjunction_enter.as_mut()
-        {
-            on_class_string_disjunction_enter(start);
-        }
+        self._options.on_class_string_disjunction_enter(start);
     }
 
     fn on_class_string_disjunction_leave(&mut self, start: usize, end: usize) {
-        if let Some(on_class_string_disjunction_leave) =
-            self._options.on_class_string_disjunction_leave.as_mut()
-        {
-            on_class_string_disjunction_leave(start, end);
-        }
+        self._options.on_class_string_disjunction_leave(start, end);
     }
 
     fn _parse_flags_option_to_mode(
@@ -658,7 +614,7 @@ impl<'a> RegExpValidator<'a> {
         let unicode_mode = unicode || unicode_sets;
         let n_flag = unicode && self.ecma_version() >= EcmaVersion::_2018
             || unicode_sets
-            || self._options.strict == Some(true) && self.ecma_version() >= EcmaVersion::_2023;
+            || self._options.strict() == Some(true) && self.ecma_version() >= EcmaVersion::_2023;
         let unicode_sets_mode = unicode_sets;
 
         Ok(Mode {
