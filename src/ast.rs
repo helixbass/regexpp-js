@@ -8,38 +8,66 @@ use wtf8::Wtf8;
 
 use crate::{
     arena::AllArenas,
-    validator::{AssertionKind, CapturingGroupKey, CapturingGroupKeyOwned, CharacterKind},
+    validator::{AssertionKind, CapturingGroupKey, CharacterKind},
     CodePoint,
 };
 
-struct IdUsize(usize);
-
-impl<'a> From<Id<Node<'a>>> for IdUsize {
-    fn from(value: Id<Node<'a>>) -> Self {
-        Self(value.index())
-    }
+#[derive(Clone)]
+pub enum Node {
+    Alternative(Alternative),
+    CapturingGroup(CapturingGroup),
+    CharacterClass(CharacterClass),
+    CharacterClassRange(CharacterClassRange),
+    ClassIntersection(ClassIntersection),
+    ClassStringDisjunction(ClassStringDisjunction),
+    ClassSubtraction(ClassSubtraction),
+    ExpressionCharacterClass(ExpressionCharacterClass),
+    Group(Group),
+    Assertion(Assertion),
+    Pattern(Pattern),
+    Quantifier(Quantifier),
+    RegExpLiteral(RegExpLiteral),
+    StringAlternative(StringAlternative),
+    Backreference(Backreference),
+    Character(Character),
+    CharacterSet(CharacterSet),
+    Flags(Flags),
 }
 
-#[derive(Clone)]
-pub enum Node<'a> {
-    Alternative(Alternative<'a>),
-    CapturingGroup(CapturingGroup<'a>),
-    CharacterClass(CharacterClass<'a>),
-    CharacterClassRange(CharacterClassRange<'a>),
-    ClassIntersection(ClassIntersection<'a>),
-    ClassStringDisjunction(ClassStringDisjunction<'a>),
-    ClassSubtraction(ClassSubtraction<'a>),
-    ExpressionCharacterClass(ExpressionCharacterClass<'a>),
-    Group(Group<'a>),
-    Assertion(Assertion<'a>),
-    Pattern(Pattern<'a>),
-    Quantifier(Quantifier<'a>),
-    RegExpLiteral(RegExpLiteral<'a>),
-    StringAlternative(StringAlternative<'a>),
-    Backreference(Backreference<'a>),
-    Character(Character<'a>),
-    CharacterSet(CharacterSet<'a>),
-    Flags(Flags<'a>),
+impl Node {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new_flags(
+        parent: Option<Id<Node>>,
+        start: usize,
+        end: usize,
+        raw: Vec<u16>,
+        dot_all: bool,
+        global: bool,
+        has_indices: bool,
+        ignore_case: bool,
+        multiline: bool,
+        sticky: bool,
+        unicode: bool,
+        unicode_sets: bool,
+    ) -> Self {
+        Self::Flags(Flags {
+            _base: NodeBase {
+                _arena_id: Default::default(),
+                parent,
+                start,
+                end,
+                raw,
+            },
+            dot_all,
+            global,
+            has_indices,
+            ignore_case,
+            multiline,
+            sticky,
+            unicode,
+            unicode_sets,
+        })
+    }
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
@@ -65,30 +93,25 @@ pub enum NodeUnresolved {
     Flags(Box<FlagsUnresolved>),
 }
 
-pub trait NodeInterface<'a> {
-    fn set_arena_id(&mut self, id: Id<Node<'a>>);
-    fn arena(&self) -> &AllArenas<'a>;
-    fn maybe_parent(&self) -> Option<Id<Node<'a>>>;
-    fn parent(&self) -> Id<Node<'a>>;
+pub trait NodeInterface {
+    fn set_arena_id(&mut self, id: Id<Node>);
+    fn maybe_parent(&self) -> Option<Id<Node>>;
+    fn parent(&self) -> Id<Node>;
     fn start(&self) -> usize;
     fn end(&self) -> usize;
-    fn raw(&self) -> &'a [u16];
+    fn raw(&self) -> &[u16];
 }
 
-impl<'a> NodeInterface<'a> for Node<'a> {
-    fn set_arena_id(&mut self, _id: Id<Node<'a>>) {
+impl NodeInterface for Node {
+    fn set_arena_id(&mut self, _id: Id<Node>) {
         todo!()
     }
 
-    fn arena(&self) -> &AllArenas<'a> {
+    fn maybe_parent(&self) -> Option<Id<Node>> {
         todo!()
     }
 
-    fn maybe_parent(&self) -> Option<Id<Node<'a>>> {
-        todo!()
-    }
-
-    fn parent(&self) -> Id<Node<'a>> {
+    fn parent(&self) -> Id<Node> {
         todo!()
     }
 
@@ -100,16 +123,16 @@ impl<'a> NodeInterface<'a> for Node<'a> {
         todo!()
     }
 
-    fn raw(&self) -> &'a [u16] {
+    fn raw(&self) -> &[u16] {
         todo!()
     }
 }
 
-fn resolve_location_vec<'a>(
-    arena: &AllArenas<'a>,
-    nodes: &[Id<Node<'a>>],
+fn resolve_location_vec(
+    arena: &AllArenas,
+    nodes: &[Id<Node>],
     path: &mut Vec<String>,
-    path_map: &mut HashMap<Id<Node<'a>>, String>,
+    path_map: &mut HashMap<Id<Node>, String>,
 ) {
     for (index, &node) in nodes.iter().enumerate() {
         path.push(index.to_string());
@@ -118,14 +141,14 @@ fn resolve_location_vec<'a>(
     }
 }
 
-pub fn resolve_location<'a>(
-    arena: &AllArenas<'a>,
-    node: Id<Node<'a>>,
+pub fn resolve_location(
+    arena: &AllArenas,
+    node: Id<Node>,
     path: &mut Vec<String>,
-    path_map: &mut HashMap<Id<Node<'a>>, String>,
+    path_map: &mut HashMap<Id<Node>, String>,
 ) {
     path_map.insert(node, format!("/{}", path.join("/")));
-    match arena.node(node) {
+    match &*arena.node(node) {
         Node::Alternative(node) => {
             resolve_location_vec(arena, &node.elements, path, path_map);
         }
@@ -203,30 +226,25 @@ pub fn resolve_location<'a>(
 }
 
 #[derive(Clone)]
-struct NodeBase<'a> {
-    _arena_id: Option<Id<Node<'a>>>,
-    _arena: *const AllArenas<'a>,
+pub struct NodeBase {
+    _arena_id: Option<Id<Node>>,
     // type: Node["type"],
-    parent: Option<Id<Node<'a>>>,
+    parent: Option<Id<Node>>,
     start: usize,
     end: usize,
-    raw: &'a [u16],
+    raw: Vec<u16>,
 }
 
-impl<'a> NodeInterface<'a> for NodeBase<'a> {
-    fn set_arena_id(&mut self, id: Id<Node<'a>>) {
+impl NodeInterface for NodeBase {
+    fn set_arena_id(&mut self, id: Id<Node>) {
         self._arena_id = Some(id);
     }
 
-    fn arena(&self) -> &AllArenas<'a> {
-        unsafe { &*self._arena }
-    }
-
-    fn maybe_parent(&self) -> Option<Id<Node<'a>>> {
+    fn maybe_parent(&self) -> Option<Id<Node>> {
         self.parent
     }
 
-    fn parent(&self) -> Id<Node<'a>> {
+    fn parent(&self) -> Id<Node> {
         self.parent.unwrap()
     }
 
@@ -238,32 +256,29 @@ impl<'a> NodeInterface<'a> for NodeBase<'a> {
         self.end
     }
 
-    fn raw(&self) -> &'a [u16] {
-        self.raw
+    fn raw(&self) -> &[u16] {
+        &self.raw
     }
 }
 
-fn get_relative_path<'a>(
-    from: Id<Node<'a>>,
-    to: Id<Node<'a>>,
-    path_map: &HashMap<Id<Node<'a>>, String>,
+fn get_relative_path(
+    from: Id<Node>,
+    to: Id<Node>,
+    path_map: &HashMap<Id<Node>, String>,
 ) -> String {
     let from_path = &path_map[&from];
     let to_path = &path_map[&to];
     let relative = diff_paths(from_path, to_path).unwrap();
     let relative = relative.to_str().unwrap();
-    format!(
-        "♻️{}",
-        relative.strip_suffix('/').unwrap_or(relative),
-    )
+    format!("♻️{}", relative.strip_suffix('/').unwrap_or(relative),)
 }
 
-pub fn to_node_unresolved<'a>(
-    id: Id<Node<'a>>,
-    arena: &AllArenas<'a>,
-    path_map: &HashMap<Id<Node<'a>>, String>,
+pub fn to_node_unresolved(
+    id: Id<Node>,
+    arena: &AllArenas,
+    path_map: &HashMap<Id<Node>, String>,
 ) -> NodeUnresolved {
-    match arena.node(id) {
+    match &*arena.node(id) {
         Node::Alternative(node) => NodeUnresolved::Alternative(Box::new(AlternativeUnresolved {
             parent: node
                 ._base
@@ -286,7 +301,7 @@ pub fn to_node_unresolved<'a>(
                 start: node._base.start,
                 end: node._base.end,
                 raw: node._base.raw.to_owned(),
-                name: node.name.map(ToOwned::to_owned),
+                name: node.name.clone(),
                 alternatives: node
                     .alternatives
                     .iter()
@@ -439,42 +454,45 @@ pub fn to_node_unresolved<'a>(
             greedy: node.greedy,
             element: to_node_unresolved(node.element, arena, path_map),
         })),
-        Node::RegExpLiteral(node) => NodeUnresolved::RegExpLiteral(Box::new(RegExpLiteralUnresolved {
-            parent: node
-                ._base
-                .parent
-                .map(|parent| get_relative_path(node._base._arena_id.unwrap(), parent, path_map)),
-            start: node._base.start,
-            end: node._base.end,
-            raw: node._base.raw.to_owned(),
-            pattern: to_node_unresolved(node.pattern, arena, path_map),
-            flags: to_node_unresolved(node.flags, arena, path_map),
-        })),
-        Node::StringAlternative(node) => NodeUnresolved::StringAlternative(Box::new(StringAlternativeUnresolved {
-            parent: node
-                ._base
-                .parent
-                .map(|parent| get_relative_path(node._base._arena_id.unwrap(), parent, path_map)),
-            start: node._base.start,
-            end: node._base.end,
-            raw: node._base.raw.to_owned(),
-            elements: node
-                .elements
-                .iter()
-                .map(|&node| to_node_unresolved(node, arena, path_map))
-                .collect(),
-        })),
-        Node::Backreference(node) => NodeUnresolved::Backreference(Box::new(BackreferenceUnresolved {
-            parent: node
-                ._base
-                .parent
-                .map(|parent| get_relative_path(node._base._arena_id.unwrap(), parent, path_map)),
-            start: node._base.start,
-            end: node._base.end,
-            raw: node._base.raw.to_owned(),
-            ref_: node.ref_.into(),
-            resolved: get_relative_path(node._base._arena_id.unwrap(), node.resolved, path_map),
-        })),
+        Node::RegExpLiteral(node) => {
+            NodeUnresolved::RegExpLiteral(Box::new(RegExpLiteralUnresolved {
+                parent: node._base.parent.map(|parent| {
+                    get_relative_path(node._base._arena_id.unwrap(), parent, path_map)
+                }),
+                start: node._base.start,
+                end: node._base.end,
+                raw: node._base.raw.to_owned(),
+                pattern: to_node_unresolved(node.pattern, arena, path_map),
+                flags: to_node_unresolved(node.flags, arena, path_map),
+            }))
+        }
+        Node::StringAlternative(node) => {
+            NodeUnresolved::StringAlternative(Box::new(StringAlternativeUnresolved {
+                parent: node._base.parent.map(|parent| {
+                    get_relative_path(node._base._arena_id.unwrap(), parent, path_map)
+                }),
+                start: node._base.start,
+                end: node._base.end,
+                raw: node._base.raw.to_owned(),
+                elements: node
+                    .elements
+                    .iter()
+                    .map(|&node| to_node_unresolved(node, arena, path_map))
+                    .collect(),
+            }))
+        }
+        Node::Backreference(node) => {
+            NodeUnresolved::Backreference(Box::new(BackreferenceUnresolved {
+                parent: node._base.parent.map(|parent| {
+                    get_relative_path(node._base._arena_id.unwrap(), parent, path_map)
+                }),
+                start: node._base.start,
+                end: node._base.end,
+                raw: node._base.raw.to_owned(),
+                ref_: node.ref_.clone(),
+                resolved: get_relative_path(node._base._arena_id.unwrap(), node.resolved, path_map),
+            }))
+        }
         Node::Character(node) => NodeUnresolved::Character(Box::new(CharacterUnresolved {
             parent: node
                 ._base
@@ -485,20 +503,21 @@ pub fn to_node_unresolved<'a>(
             raw: node._base.raw.to_owned(),
             value: node.value,
         })),
-        Node::CharacterSet(node) => NodeUnresolved::CharacterSet(Box::new(CharacterSetUnresolved {
-            parent: node
-                ._base
-                .parent
-                .map(|parent| get_relative_path(node._base._arena_id.unwrap(), parent, path_map)),
-            start: node._base.start,
-            end: node._base.end,
-            raw: node._base.raw.to_owned(),
-            kind: node.kind,
-            strings: node.strings,
-            key: node.key.map(ToOwned::to_owned),
-            value: node.value.map(ToOwned::to_owned),
-            negate: node.negate,
-        })),
+        Node::CharacterSet(node) => {
+            NodeUnresolved::CharacterSet(Box::new(CharacterSetUnresolved {
+                parent: node._base.parent.map(|parent| {
+                    get_relative_path(node._base._arena_id.unwrap(), parent, path_map)
+                }),
+                start: node._base.start,
+                end: node._base.end,
+                raw: node._base.raw.to_owned(),
+                kind: node.kind,
+                strings: node.strings,
+                key: node.key.clone(),
+                value: node.value.clone(),
+                negate: node.negate,
+            }))
+        }
         Node::Flags(node) => NodeUnresolved::Flags(Box::new(FlagsUnresolved {
             parent: node
                 ._base
@@ -520,10 +539,10 @@ pub fn to_node_unresolved<'a>(
 }
 
 #[derive(Clone)]
-pub struct RegExpLiteral<'a> {
-    _base: NodeBase<'a>,
-    pub pattern: Id<Node<'a>>, /*Pattern*/
-    pub flags: Id<Node<'a>>,   /*Flags*/
+pub struct RegExpLiteral {
+    _base: NodeBase,
+    pub pattern: Id<Node>, /*Pattern*/
+    pub flags: Id<Node>,   /*Flags*/
 }
 
 fn deserialize_wtf_16<'de, D>(deserializer: D) -> Result<Vec<u16>, D::Error>
@@ -569,9 +588,9 @@ pub struct RegExpLiteralUnresolved {
 }
 
 #[derive(Clone)]
-pub struct Pattern<'a> {
-    _base: NodeBase<'a>,
-    pub alternatives: Vec<Id<Node<'a>> /*Alternative*/>,
+pub struct Pattern {
+    _base: NodeBase,
+    pub alternatives: Vec<Id<Node> /*Alternative*/>,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
@@ -585,9 +604,9 @@ pub struct PatternUnresolved {
 }
 
 #[derive(Clone)]
-pub struct Alternative<'a> {
-    _base: NodeBase<'a>,
-    pub elements: Vec<Id<Node<'a>> /*Element*/>,
+pub struct Alternative {
+    _base: NodeBase,
+    pub elements: Vec<Id<Node> /*Element*/>,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
@@ -601,9 +620,9 @@ pub struct AlternativeUnresolved {
 }
 
 #[derive(Clone)]
-pub struct Group<'a> {
-    _base: NodeBase<'a>,
-    pub alternatives: Vec<Id<Node<'a>> /*Alternative*/>,
+pub struct Group {
+    _base: NodeBase,
+    pub alternatives: Vec<Id<Node> /*Alternative*/>,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
@@ -617,11 +636,11 @@ pub struct GroupUnresolved {
 }
 
 #[derive(Clone)]
-pub struct CapturingGroup<'a> {
-    _base: NodeBase<'a>,
-    pub name: Option<&'a str>,
-    pub alternatives: Vec<Id<Node<'a>> /*Alternative*/>,
-    pub references: Vec<Id<Node<'a>> /*Backreference*/>,
+pub struct CapturingGroup {
+    _base: NodeBase,
+    pub name: Option<String>,
+    pub alternatives: Vec<Id<Node> /*Alternative*/>,
+    pub references: Vec<Id<Node> /*Backreference*/>,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
@@ -637,11 +656,11 @@ pub struct CapturingGroupUnresolved {
 }
 
 #[derive(Clone)]
-pub struct Assertion<'a> {
-    _base: NodeBase<'a>,
+pub struct Assertion {
+    _base: NodeBase,
     pub kind: AssertionKind,
     pub negate: Option<bool>,
-    pub alternatives: Option<Vec<Id<Node<'a>> /*Alternative*/>>,
+    pub alternatives: Option<Vec<Id<Node> /*Alternative*/>>,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
@@ -657,12 +676,12 @@ pub struct AssertionUnresolved {
 }
 
 #[derive(Clone)]
-pub struct Quantifier<'a> {
-    _base: NodeBase<'a>,
+pub struct Quantifier {
+    _base: NodeBase,
     pub min: usize,
     pub max: usize,
     pub greedy: bool,
-    pub element: Id<Node<'a> /*QuantifiableElement*/>,
+    pub element: Id<Node /*QuantifiableElement*/>,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
@@ -680,11 +699,11 @@ pub struct QuantifierUnresolved {
 }
 
 #[derive(Clone)]
-pub struct CharacterClass<'a> {
-    _base: NodeBase<'a>,
+pub struct CharacterClass {
+    _base: NodeBase,
     pub unicode_sets: bool,
     pub negate: bool,
-    pub elements: Vec<Id<Node<'a>> /*CharacterClassElement*/>,
+    pub elements: Vec<Id<Node> /*CharacterClassElement*/>,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
@@ -701,10 +720,10 @@ pub struct CharacterClassUnresolved {
 }
 
 #[derive(Clone)]
-pub struct CharacterClassRange<'a> {
-    _base: NodeBase<'a>,
-    pub min: Id<Node<'a> /*Character*/>,
-    pub max: Id<Node<'a> /*Character*/>,
+pub struct CharacterClassRange {
+    _base: NodeBase,
+    pub min: Id<Node /*Character*/>,
+    pub max: Id<Node /*Character*/>,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
@@ -719,12 +738,12 @@ pub struct CharacterClassRangeUnresolved {
 }
 
 #[derive(Clone)]
-pub struct CharacterSet<'a> {
-    _base: NodeBase<'a>,
+pub struct CharacterSet {
+    _base: NodeBase,
     pub kind: CharacterKind,
     pub strings: Option<bool>,
-    pub key: Option<&'a str>,
-    pub value: Option<&'a str>,
+    pub key: Option<String>,
+    pub value: Option<String>,
     pub negate: Option<bool>,
 }
 
@@ -743,10 +762,10 @@ pub struct CharacterSetUnresolved {
 }
 
 #[derive(Clone)]
-pub struct ExpressionCharacterClass<'a> {
-    _base: NodeBase<'a>,
+pub struct ExpressionCharacterClass {
+    _base: NodeBase,
     pub negate: bool,
-    pub expression: Id<Node<'a> /*ClassIntersection | ClassSubtraction*/>,
+    pub expression: Id<Node /*ClassIntersection | ClassSubtraction*/>,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
@@ -761,10 +780,10 @@ pub struct ExpressionCharacterClassUnresolved {
 }
 
 #[derive(Clone)]
-pub struct ClassIntersection<'a> {
-    _base: NodeBase<'a>,
-    pub left: Id<Node<'a> /*ClassIntersection | ClassSetOperand*/>,
-    pub right: Id<Node<'a> /*ClassSetOperand*/>,
+pub struct ClassIntersection {
+    _base: NodeBase,
+    pub left: Id<Node /*ClassIntersection | ClassSetOperand*/>,
+    pub right: Id<Node /*ClassSetOperand*/>,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
@@ -779,10 +798,10 @@ pub struct ClassIntersectionUnresolved {
 }
 
 #[derive(Clone)]
-pub struct ClassSubtraction<'a> {
-    _base: NodeBase<'a>,
-    pub left: Id<Node<'a> /*ClassSetOperand | ClassSubtraction*/>,
-    pub right: Id<Node<'a> /*ClassSetOperand*/>,
+pub struct ClassSubtraction {
+    _base: NodeBase,
+    pub left: Id<Node /*ClassSetOperand | ClassSubtraction*/>,
+    pub right: Id<Node /*ClassSetOperand*/>,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
@@ -797,9 +816,9 @@ pub struct ClassSubtractionUnresolved {
 }
 
 #[derive(Clone)]
-pub struct ClassStringDisjunction<'a> {
-    _base: NodeBase<'a>,
-    pub alternatives: Vec<Id<Node<'a>> /*StringAlternative*/>,
+pub struct ClassStringDisjunction {
+    _base: NodeBase,
+    pub alternatives: Vec<Id<Node> /*StringAlternative*/>,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
@@ -813,9 +832,9 @@ pub struct ClassStringDisjunctionUnresolved {
 }
 
 #[derive(Clone)]
-pub struct StringAlternative<'a> {
-    _base: NodeBase<'a>,
-    pub elements: Vec<Id<Node<'a>> /*Character*/>,
+pub struct StringAlternative {
+    _base: NodeBase,
+    pub elements: Vec<Id<Node> /*Character*/>,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
@@ -829,8 +848,8 @@ pub struct StringAlternativeUnresolved {
 }
 
 #[derive(Clone)]
-pub struct Character<'a> {
-    _base: NodeBase<'a>,
+pub struct Character {
+    _base: NodeBase,
     pub value: CodePoint,
 }
 
@@ -845,10 +864,10 @@ pub struct CharacterUnresolved {
 }
 
 #[derive(Clone)]
-pub struct Backreference<'a> {
-    _base: NodeBase<'a>,
-    pub ref_: CapturingGroupKey<'a>,
-    pub resolved: Id<Node<'a> /*CapturingGroup*/>,
+pub struct Backreference {
+    _base: NodeBase,
+    pub ref_: CapturingGroupKey,
+    pub resolved: Id<Node /*CapturingGroup*/>,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
@@ -859,13 +878,13 @@ pub struct BackreferenceUnresolved {
     #[serde(deserialize_with = "deserialize_wtf_16")]
     pub raw: Vec<u16>,
     #[serde(rename = "ref")]
-    pub ref_: CapturingGroupKeyOwned,
+    pub ref_: CapturingGroupKey,
     pub resolved: String,
 }
 
 #[derive(Clone)]
-pub struct Flags<'a> {
-    _base: NodeBase<'a>,
+pub struct Flags {
+    _base: NodeBase,
     pub dot_all: bool,
     pub global: bool,
     pub has_indices: bool,

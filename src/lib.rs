@@ -22,11 +22,11 @@ pub use validator::RegExpValidator;
 
 pub type Result<T> = std::result::Result<T, RegExpSyntaxError>;
 
-pub fn parse_reg_exp_literal<'a>(
-    source: &'a str,
+pub fn parse_reg_exp_literal(
+    source: &str,
     options: Option<parser::Options>,
-    arena: &mut AllArenas<'a>,
-) -> Result<Id<Node<'a>> /*AST.RegExpLiteral*/> {
+    arena: &mut AllArenas,
+) -> Result<Id<Node> /*AST.RegExpLiteral*/> {
     RegExpParser::new(arena, options).parse_literal(source, None, None)
 }
 
@@ -40,11 +40,11 @@ mod tests {
 
     use crate::{test::fixtures::parser::literal::{AstOrError, FIXTURES_DATA}, ast::{NodeUnresolved, to_node_unresolved, resolve_location}};
 
-    fn generate_ast<'a>(source: &'a str, options: parser::Options) -> NodeUnresolved {
-        let mut arena: AllArenas<'a> = Default::default();
+    fn generate_ast(source: &str, options: parser::Options) -> NodeUnresolved {
+        let mut arena: AllArenas = Default::default();
         let ast = parse_reg_exp_literal(source, Some(options), &mut arena).unwrap();
         let mut path: Vec<String> = Default::default();
-        let mut path_map: HashMap<Id<Node<'a>>, String> = Default::default();
+        let mut path_map: HashMap<Id<Node>, String> = Default::default();
         resolve_location(
             &arena,
             ast,

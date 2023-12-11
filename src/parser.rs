@@ -1,9 +1,9 @@
-use std::rc::Rc;
+use std::{rc::Rc, collections::HashMap, cell::RefCell};
 
 use id_arena::Id;
 use serde::Deserialize;
 
-use crate::{arena::AllArenas, ecma_versions::EcmaVersion, validator, RegExpValidator, ast::Node, Result};
+use crate::{arena::AllArenas, ecma_versions::{EcmaVersion, LATEST_ECMA_VERSION}, validator::{self, RegExpFlags}, RegExpValidator, ast::{Node, Flags, NodeBase}, Result};
 
 #[derive(Copy, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -12,28 +12,73 @@ pub struct Options {
     ecma_version: Option<EcmaVersion>,
 }
 
-struct RegExpParserState {}
+struct RegExpParserState<'a> {
+    _arena: &'a AllArenas,
+    strict: bool,
+    ecma_version: EcmaVersion,
+    _node: Option<Id<Node> /*AppendableNode*/>,
+    _expression_buffer_map: HashMap<Id<Node>, Id<Node>>,
+    _flags: RefCell<Option<Id<Node> /*Flags*/>>,
+    _backreferences: Vec<Id<Node> /*Backreference*/>,
+    _capturing_groups: Vec<Id<Node> /*CapturingGroup*/>,
+    source: Vec<u16>,
+}
 
-impl RegExpParserState {
-    pub fn new(options: Option<Options>) -> Self {
-        unimplemented!()
+impl<'a> RegExpParserState<'a> {
+    pub fn new(
+        arena: &'a AllArenas,
+        options: Option<Options>) -> Self {
+        Self {
+            _arena: arena,
+            strict: options.and_then(|options| options.strict).unwrap_or_default(),
+            ecma_version: options.and_then(|options| options.ecma_version).unwrap_or(LATEST_ECMA_VERSION),
+            _node: Default::default(),
+            _expression_buffer_map: Default::default(),
+            _flags: Default::default(),
+            _backreferences: Default::default(),
+            _capturing_groups: Default::default(),
+            source: Default::default(),
+        }
+    }
+
+    fn pattern(&self) -> Id<Node> {
+        self._node.unwrap()
+    }
+
+    fn flags(&self) -> Id<Node> {
+        self._flags.borrow().unwrap()
     }
 }
 
-impl validator::Options for RegExpParserState {
+impl<'a> validator::Options for RegExpParserState<'a> {
     fn strict(&self) -> Option<bool> {
-        todo!()
+        Some(self.strict)
     }
 
     fn ecma_version(&self) -> Option<EcmaVersion> {
-        todo!()
+        Some(self.ecma_version)
     }
 
     fn on_literal_enter(&self, start: usize) {}
 
     fn on_literal_leave(&self, start: usize, end: usize) {}
 
-    fn on_reg_exp_flags(&self, start: usize, end: usize, flags: validator::RegExpFlags) {}
+    fn on_reg_exp_flags(&self, start: usize, end: usize, flags: RegExpFlags) {
+        *self._flags.borrow_mut() = Some(self._arena.alloc_node(Node::new_flags(
+            None,
+            start,
+            end,
+            self.source[start..end].to_owned(),
+            flags.dot_all,
+            flags.global,
+            flags.has_indices,
+            flags.ignore_case,
+            flags.multiline,
+            flags.sticky,
+            flags.unicode,
+            flags.unicode_sets,
+        )));
+    }
 
     fn on_pattern_enter(&self, start: usize) {}
 
@@ -138,15 +183,15 @@ impl validator::Options for RegExpParserState {
     fn on_string_alternative_leave(&self, start: usize, TODO: usize, a: usize) {}
 }
 
-pub struct RegExpParser<'a, 'b> {
-    _arena: &'b mut AllArenas<'a>,
-    _state: Rc<RegExpParserState>,
+pub struct RegExpParser<'a> {
+    _arena: &'a AllArenas,
+    _state: Rc<RegExpParserState<'a>>,
     _validator: RegExpValidator<'a>,
 }
 
-impl<'a, 'b> RegExpParser<'a, 'b> {
-    pub fn new(arena: &'b mut AllArenas<'a>, options: Option<Options>) -> Self {
-        let state = Rc::new(RegExpParserState::new(options));
+impl<'a> RegExpParser<'a> {
+    pub fn new(arena: &'a AllArenas, options: Option<Options>) -> Self {
+        let state = Rc::new(RegExpParserState::new(arena, options));
         Self {
             _arena: arena,
             _state: state.clone(),
@@ -156,10 +201,10 @@ impl<'a, 'b> RegExpParser<'a, 'b> {
 
     pub fn parse_literal(
         &mut self,
-        source: &'a str,
+        source: &str,
         start: Option<usize>,
         end: Option<usize>,
-    ) -> Result<Id<Node<'a>>> {
+    ) -> Result<Id<Node>> {
         unimplemented!()
     }
 }

@@ -136,8 +136,8 @@ pub enum RegExpValidatorSourceContextKind {
     Pattern,
 }
 
-pub struct RegExpValidatorSourceContext<'a> {
-    pub source: &'a str,
+pub struct RegExpValidatorSourceContext {
+    pub source: String,
     pub start: usize,
     pub end: usize,
     pub kind: RegExpValidatorSourceContextKind,
@@ -174,26 +174,11 @@ pub enum CharacterKind {
     Property,
 }
 
-#[derive(Copy, Clone)]
-pub enum CapturingGroupKey<'a> {
-    Index(usize),
-    Name(&'a str),
-}
-
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(untagged)]
-pub enum CapturingGroupKeyOwned {
+pub enum CapturingGroupKey {
     Index(usize),
     Name(String),
-}
-
-impl<'a> From<CapturingGroupKey<'a>> for CapturingGroupKeyOwned {
-    fn from(value: CapturingGroupKey<'a>) -> Self {
-        match value {
-            CapturingGroupKey::Index(value) => Self::Index(value),
-            CapturingGroupKey::Name(value) => Self::Name(value.to_owned()),
-        }
-    }
 }
 
 pub trait Options {
@@ -267,7 +252,7 @@ struct RaiseContext {
 }
 
 pub struct RegExpValidator<'a> {
-    _options: Rc<dyn Options>,
+    _options: Rc<dyn Options + 'a>,
     _reader: Reader,
     _unicode_mode: bool,
     _unicode_sets_mode: bool,
@@ -277,11 +262,11 @@ pub struct RegExpValidator<'a> {
     _num_capturing_parens: usize,
     _group_names: HashSet<String>,
     _backreference_names: HashSet<String>,
-    _src_ctx: Option<RegExpValidatorSourceContext<'a>>,
+    _src_ctx: Option<RegExpValidatorSourceContext>,
 }
 
 impl<'a> RegExpValidator<'a> {
-    pub fn new(options: Option<Rc<dyn Options>>) -> Self {
+    pub fn new(options: Option<Rc<dyn Options + 'a>>) -> Self {
         Self {
             _options: options.unwrap_or_else(|| Rc::new(NoopOptions)),
             _reader: Default::default(),
@@ -299,14 +284,14 @@ impl<'a> RegExpValidator<'a> {
 
     pub fn validate_literal(
         &mut self,
-        source: &'a str,
+        source: &str,
         start: Option<usize>,
         end: Option<usize>,
     ) -> Result<(), RegExpSyntaxError> {
         let start = start.unwrap_or(0);
         let end = end.unwrap_or(source.len());
         self._src_ctx = Some(RegExpValidatorSourceContext {
-            source,
+            source: source.to_owned(),
             start,
             end,
             kind: RegExpValidatorSourceContextKind::Literal,
@@ -343,14 +328,14 @@ impl<'a> RegExpValidator<'a> {
 
     pub fn validate_flags(
         &mut self,
-        source: &'a str,
+        source: &str,
         start: Option<usize>,
         end: Option<usize>,
     ) -> Result<(), RegExpSyntaxError> {
         let start = start.unwrap_or(0);
         let end = end.unwrap_or(source.len());
         self._src_ctx = Some(RegExpValidatorSourceContext {
-            source,
+            source: source.to_owned(),
             start,
             end,
             kind: RegExpValidatorSourceContextKind::Flags,
@@ -360,7 +345,7 @@ impl<'a> RegExpValidator<'a> {
 
     pub fn validate_pattern(
         &mut self,
-        source: &'a str,
+        source: &str,
         start: Option<usize>,
         end: Option<usize>,
         flags: Option<ValidatePatternFlags>,
@@ -368,7 +353,7 @@ impl<'a> RegExpValidator<'a> {
         let start = start.unwrap_or(0);
         let end = end.unwrap_or(source.len());
         self._src_ctx = Some(RegExpValidatorSourceContext {
-            source,
+            source: source.to_owned(),
             start,
             end,
             kind: RegExpValidatorSourceContextKind::Pattern,
@@ -378,7 +363,7 @@ impl<'a> RegExpValidator<'a> {
 
     fn validate_pattern_internal(
         &mut self,
-        source: &'a str,
+        source: &str,
         start: usize,
         end: usize,
         flags: Option<ValidatePatternFlags>,
@@ -404,7 +389,7 @@ impl<'a> RegExpValidator<'a> {
 
     fn validate_flags_internal(
         &mut self,
-        source: &'a str,
+        source: &str,
         start: usize,
         end: usize,
     ) -> Result<(), RegExpSyntaxError> {
@@ -644,7 +629,7 @@ impl<'a> RegExpValidator<'a> {
         self._reader.next_code_point3()
     }
 
-    fn reset(&mut self, source: &'a str, start: usize, end: usize) {
+    fn reset(&mut self, source: &str, start: usize, end: usize) {
         self._reader.reset(source, start, end, self._unicode_mode);
     }
 
