@@ -551,40 +551,211 @@ pub trait NodeInterface {
 }
 
 impl NodeInterface for Node {
-    fn set_arena_id(&mut self, _id: Id<Node>) {
-        todo!()
+    fn set_arena_id(&mut self, id: Id<Node>) {
+        match self {
+            Node::Alternative(node) => node._base.set_arena_id(id),
+            Node::CapturingGroup(node) => node._base.set_arena_id(id),
+            Node::CharacterClass(node) => node._base.set_arena_id(id),
+            Node::CharacterClassRange(node) => node._base.set_arena_id(id),
+            Node::ClassIntersection(node) => node._base.set_arena_id(id),
+            Node::ClassStringDisjunction(node) => node._base.set_arena_id(id),
+            Node::ClassSubtraction(node) => node._base.set_arena_id(id),
+            Node::ExpressionCharacterClass(node) => node._base.set_arena_id(id),
+            Node::Group(node) => node._base.set_arena_id(id),
+            Node::Assertion(node) => node._base.set_arena_id(id),
+            Node::Pattern(node) => node._base.set_arena_id(id),
+            Node::Quantifier(node) => node._base.set_arena_id(id),
+            Node::RegExpLiteral(node) => node._base.set_arena_id(id),
+            Node::StringAlternative(node) => node._base.set_arena_id(id),
+            Node::Backreference(node) => node._base.set_arena_id(id),
+            Node::Character(node) => node._base.set_arena_id(id),
+            Node::CharacterSet(node) => node._base.set_arena_id(id),
+            Node::Flags(node) => node._base.set_arena_id(id),
+        }
     }
 
     fn maybe_parent(&self) -> Option<Id<Node>> {
-        todo!()
+        match self {
+            Node::Alternative(node) => node._base.maybe_parent(),
+            Node::CapturingGroup(node) => node._base.maybe_parent(),
+            Node::CharacterClass(node) => node._base.maybe_parent(),
+            Node::CharacterClassRange(node) => node._base.maybe_parent(),
+            Node::ClassIntersection(node) => node._base.maybe_parent(),
+            Node::ClassStringDisjunction(node) => node._base.maybe_parent(),
+            Node::ClassSubtraction(node) => node._base.maybe_parent(),
+            Node::ExpressionCharacterClass(node) => node._base.maybe_parent(),
+            Node::Group(node) => node._base.maybe_parent(),
+            Node::Assertion(node) => node._base.maybe_parent(),
+            Node::Pattern(node) => node._base.maybe_parent(),
+            Node::Quantifier(node) => node._base.maybe_parent(),
+            Node::RegExpLiteral(node) => node._base.maybe_parent(),
+            Node::StringAlternative(node) => node._base.maybe_parent(),
+            Node::Backreference(node) => node._base.maybe_parent(),
+            Node::Character(node) => node._base.maybe_parent(),
+            Node::CharacterSet(node) => node._base.maybe_parent(),
+            Node::Flags(node) => node._base.maybe_parent(),
+        }
     }
 
     fn set_parent(&mut self, parent: Option<Id<Node>>) {
-        todo!()
+        match self {
+            Node::Alternative(node) => node._base.set_parent(parent),
+            Node::CapturingGroup(node) => node._base.set_parent(parent),
+            Node::CharacterClass(node) => node._base.set_parent(parent),
+            Node::CharacterClassRange(node) => node._base.set_parent(parent),
+            Node::ClassIntersection(node) => node._base.set_parent(parent),
+            Node::ClassStringDisjunction(node) => node._base.set_parent(parent),
+            Node::ClassSubtraction(node) => node._base.set_parent(parent),
+            Node::ExpressionCharacterClass(node) => node._base.set_parent(parent),
+            Node::Group(node) => node._base.set_parent(parent),
+            Node::Assertion(node) => node._base.set_parent(parent),
+            Node::Pattern(node) => node._base.set_parent(parent),
+            Node::Quantifier(node) => node._base.set_parent(parent),
+            Node::RegExpLiteral(node) => node._base.set_parent(parent),
+            Node::StringAlternative(node) => node._base.set_parent(parent),
+            Node::Backreference(node) => node._base.set_parent(parent),
+            Node::Character(node) => node._base.set_parent(parent),
+            Node::CharacterSet(node) => node._base.set_parent(parent),
+            Node::Flags(node) => node._base.set_parent(parent),
+        }
     }
 
     fn parent(&self) -> Id<Node> {
-        todo!()
+        match self {
+            Node::Alternative(node) => node._base.parent(),
+            Node::CapturingGroup(node) => node._base.parent(),
+            Node::CharacterClass(node) => node._base.parent(),
+            Node::CharacterClassRange(node) => node._base.parent(),
+            Node::ClassIntersection(node) => node._base.parent(),
+            Node::ClassStringDisjunction(node) => node._base.parent(),
+            Node::ClassSubtraction(node) => node._base.parent(),
+            Node::ExpressionCharacterClass(node) => node._base.parent(),
+            Node::Group(node) => node._base.parent(),
+            Node::Assertion(node) => node._base.parent(),
+            Node::Pattern(node) => node._base.parent(),
+            Node::Quantifier(node) => node._base.parent(),
+            Node::RegExpLiteral(node) => node._base.parent(),
+            Node::StringAlternative(node) => node._base.parent(),
+            Node::Backreference(node) => node._base.parent(),
+            Node::Character(node) => node._base.parent(),
+            Node::CharacterSet(node) => node._base.parent(),
+            Node::Flags(node) => node._base.parent(),
+        }
     }
 
     fn start(&self) -> usize {
-        todo!()
+        match self {
+            Node::Alternative(node) => node._base.start(),
+            Node::CapturingGroup(node) => node._base.start(),
+            Node::CharacterClass(node) => node._base.start(),
+            Node::CharacterClassRange(node) => node._base.start(),
+            Node::ClassIntersection(node) => node._base.start(),
+            Node::ClassStringDisjunction(node) => node._base.start(),
+            Node::ClassSubtraction(node) => node._base.start(),
+            Node::ExpressionCharacterClass(node) => node._base.start(),
+            Node::Group(node) => node._base.start(),
+            Node::Assertion(node) => node._base.start(),
+            Node::Pattern(node) => node._base.start(),
+            Node::Quantifier(node) => node._base.start(),
+            Node::RegExpLiteral(node) => node._base.start(),
+            Node::StringAlternative(node) => node._base.start(),
+            Node::Backreference(node) => node._base.start(),
+            Node::Character(node) => node._base.start(),
+            Node::CharacterSet(node) => node._base.start(),
+            Node::Flags(node) => node._base.start(),
+        }
     }
 
     fn end(&self) -> usize {
-        todo!()
+        match self {
+            Node::Alternative(node) => node._base.end(),
+            Node::CapturingGroup(node) => node._base.end(),
+            Node::CharacterClass(node) => node._base.end(),
+            Node::CharacterClassRange(node) => node._base.end(),
+            Node::ClassIntersection(node) => node._base.end(),
+            Node::ClassStringDisjunction(node) => node._base.end(),
+            Node::ClassSubtraction(node) => node._base.end(),
+            Node::ExpressionCharacterClass(node) => node._base.end(),
+            Node::Group(node) => node._base.end(),
+            Node::Assertion(node) => node._base.end(),
+            Node::Pattern(node) => node._base.end(),
+            Node::Quantifier(node) => node._base.end(),
+            Node::RegExpLiteral(node) => node._base.end(),
+            Node::StringAlternative(node) => node._base.end(),
+            Node::Backreference(node) => node._base.end(),
+            Node::Character(node) => node._base.end(),
+            Node::CharacterSet(node) => node._base.end(),
+            Node::Flags(node) => node._base.end(),
+        }
     }
 
     fn set_end(&mut self, end: usize) {
-        todo!()
+        match self {
+            Node::Alternative(node) => node._base.set_end(end),
+            Node::CapturingGroup(node) => node._base.set_end(end),
+            Node::CharacterClass(node) => node._base.set_end(end),
+            Node::CharacterClassRange(node) => node._base.set_end(end),
+            Node::ClassIntersection(node) => node._base.set_end(end),
+            Node::ClassStringDisjunction(node) => node._base.set_end(end),
+            Node::ClassSubtraction(node) => node._base.set_end(end),
+            Node::ExpressionCharacterClass(node) => node._base.set_end(end),
+            Node::Group(node) => node._base.set_end(end),
+            Node::Assertion(node) => node._base.set_end(end),
+            Node::Pattern(node) => node._base.set_end(end),
+            Node::Quantifier(node) => node._base.set_end(end),
+            Node::RegExpLiteral(node) => node._base.set_end(end),
+            Node::StringAlternative(node) => node._base.set_end(end),
+            Node::Backreference(node) => node._base.set_end(end),
+            Node::Character(node) => node._base.set_end(end),
+            Node::CharacterSet(node) => node._base.set_end(end),
+            Node::Flags(node) => node._base.set_end(end),
+        }
     }
 
     fn raw(&self) -> &[u16] {
-        todo!()
+        match self {
+            Node::Alternative(node) => node._base.raw(),
+            Node::CapturingGroup(node) => node._base.raw(),
+            Node::CharacterClass(node) => node._base.raw(),
+            Node::CharacterClassRange(node) => node._base.raw(),
+            Node::ClassIntersection(node) => node._base.raw(),
+            Node::ClassStringDisjunction(node) => node._base.raw(),
+            Node::ClassSubtraction(node) => node._base.raw(),
+            Node::ExpressionCharacterClass(node) => node._base.raw(),
+            Node::Group(node) => node._base.raw(),
+            Node::Assertion(node) => node._base.raw(),
+            Node::Pattern(node) => node._base.raw(),
+            Node::Quantifier(node) => node._base.raw(),
+            Node::RegExpLiteral(node) => node._base.raw(),
+            Node::StringAlternative(node) => node._base.raw(),
+            Node::Backreference(node) => node._base.raw(),
+            Node::Character(node) => node._base.raw(),
+            Node::CharacterSet(node) => node._base.raw(),
+            Node::Flags(node) => node._base.raw(),
+        }
     }
 
     fn set_raw(&mut self, raw: Wtf16) {
-        todo!()
+        match self {
+            Node::Alternative(node) => node._base.set_raw(raw),
+            Node::CapturingGroup(node) => node._base.set_raw(raw),
+            Node::CharacterClass(node) => node._base.set_raw(raw),
+            Node::CharacterClassRange(node) => node._base.set_raw(raw),
+            Node::ClassIntersection(node) => node._base.set_raw(raw),
+            Node::ClassStringDisjunction(node) => node._base.set_raw(raw),
+            Node::ClassSubtraction(node) => node._base.set_raw(raw),
+            Node::ExpressionCharacterClass(node) => node._base.set_raw(raw),
+            Node::Group(node) => node._base.set_raw(raw),
+            Node::Assertion(node) => node._base.set_raw(raw),
+            Node::Pattern(node) => node._base.set_raw(raw),
+            Node::Quantifier(node) => node._base.set_raw(raw),
+            Node::RegExpLiteral(node) => node._base.set_raw(raw),
+            Node::StringAlternative(node) => node._base.set_raw(raw),
+            Node::Backreference(node) => node._base.set_raw(raw),
+            Node::Character(node) => node._base.set_raw(raw),
+            Node::CharacterSet(node) => node._base.set_raw(raw),
+            Node::Flags(node) => node._base.set_raw(raw),
+        }
     }
 }
 

@@ -181,6 +181,12 @@ pub enum CapturingGroupKey {
     Name(Wtf16),
 }
 
+impl From<usize> for CapturingGroupKey {
+    fn from(value: usize) -> Self {
+        Self::Index(value)
+    }
+}
+
 pub trait Options {
     fn strict(&self) -> Option<bool>;
     fn ecma_version(&self) -> Option<EcmaVersion>;
@@ -570,6 +576,10 @@ impl<'a> RegExpValidator<'a> {
         self._options.on_character(start, end, value);
     }
 
+    fn on_backreference(&mut self, start: usize, end: usize, ref_: &CapturingGroupKey) {
+        self._options.on_backreference(start, end, ref_);
+    }
+
     fn on_character_class_enter(&mut self, start: usize, negate: bool, unicode_sets: bool) {
         self._options
             .on_character_class_enter(start, negate, unicode_sets);
@@ -904,7 +914,7 @@ impl<'a> RegExpValidator<'a> {
     fn consume_atom(&mut self) -> Result<bool, RegExpSyntaxError> {
         Ok(self.consume_pattern_character()
             || self.consume_dot()
-            || self.consume_reverse_solidus_atom_escape()
+            || self.consume_reverse_solidus_atom_escape()?
             || self.consume_character_class()?.is_some()
             || self.consume_uncapturing_group()
             || self.consume_capturing_group())
@@ -918,15 +928,15 @@ impl<'a> RegExpValidator<'a> {
         false
     }
 
-    fn consume_reverse_solidus_atom_escape(&mut self) -> bool {
+    fn consume_reverse_solidus_atom_escape(&mut self) -> Result<bool, RegExpSyntaxError> {
         let start = self.index();
         if self.eat(REVERSE_SOLIDUS) {
-            if self.consume_atom_escape() {
-                return true;
+            if self.consume_atom_escape()? {
+                return Ok(true);
             }
             self.rewind(start);
         }
-        false
+        Ok(false)
     }
 
     fn consume_uncapturing_group(&self) -> bool {
@@ -952,8 +962,33 @@ impl<'a> RegExpValidator<'a> {
         false
     }
 
-    fn consume_atom_escape(&self) -> bool {
-        unimplemented!()
+    fn consume_atom_escape(&mut self) -> Result<bool, RegExpSyntaxError> {
+        if self.consume_backreference()? ||
+            self.consume_character_class_escape().is_some() ||
+            self.consume_character_escape() ||
+            self._n_flag && self.consume_k_group_name() {
+            return Ok(true);
+        }
+        if self.strict() || self._unicode_mode {
+            self.raise("Invalid escape", None)?;
+        }
+        Ok(false)
+    }
+
+    fn consume_backreference(&mut self) -> Result<bool, RegExpSyntaxError> {
+        let start = self.index();
+        if self.eat_decimal_escape() {
+            let n = self._last_int_value.unwrap() as usize;
+            if n <= self._num_capturing_parens {
+                self.on_backreference(start - 1, self.index(), &n.into());
+                return Ok(true);
+            }
+            if self.strict() || self._unicode_mode {
+                self.raise("Invalid escape", None)?;
+            }
+            self.rewind(start);
+        }
+        Ok(false)
     }
 
     fn consume_character_class_escape(&self) -> Option<UnicodeSetsConsumeResult> {
@@ -961,6 +996,10 @@ impl<'a> RegExpValidator<'a> {
     }
 
     fn consume_character_escape(&self) -> bool {
+        unimplemented!()
+    }
+
+    fn consume_k_group_name(&self) -> bool {
         unimplemented!()
     }
 
@@ -1295,6 +1334,10 @@ impl<'a> RegExpValidator<'a> {
             self.rewind(start);
         }
         false
+    }
+
+    fn eat_decimal_escape(&self) -> bool {
+        unimplemented!()
     }
 }
 
