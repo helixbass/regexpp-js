@@ -1,3 +1,5 @@
+use crate::ast::Wtf16;
+
 pub type CodePoint = u32;
 
 fn is_surrogate_code_point(value: u16) -> bool {
@@ -18,7 +20,7 @@ fn get_single_surrogate_pair_code_point(values: &[u16]) -> CodePoint {
 
 pub struct Reader {
     _use_unicode_impl: bool,
-    _s: Vec<u16>,
+    _s: Wtf16,
     _i: usize,
     _start: usize,
     _end: usize,
@@ -91,7 +93,7 @@ impl Reader {
     pub fn reset(&mut self, source: &[u16], start: usize, end: usize, u_flag: bool) {
         self._use_unicode_impl = u_flag;
         self._start = start;
-        self._s = source.to_owned();
+        self._s = source.into();
         self._end = end;
         self.rewind(start);
     }

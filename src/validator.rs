@@ -20,7 +20,7 @@ use crate::{
         REVERSE_SOLIDUS, RIGHT_CURLY_BRACKET, RIGHT_PARENTHESIS, RIGHT_SQUARE_BRACKET, SEMICOLON,
         SOLIDUS, TILDE, VERTICAL_LINE,
     },
-    EcmaVersion, Reader, RegExpSyntaxError,
+    EcmaVersion, Reader, RegExpSyntaxError, ast::Wtf16,
 };
 
 static SYNTAX_CHARACTER: Lazy<HashSet<CodePoint>> = Lazy::new(|| {
@@ -137,7 +137,7 @@ pub enum RegExpValidatorSourceContextKind {
 }
 
 pub struct RegExpValidatorSourceContext {
-    pub source: Vec<u16>,
+    pub source: Wtf16,
     pub start: usize,
     pub end: usize,
     pub kind: RegExpValidatorSourceContextKind,
@@ -174,11 +174,11 @@ pub enum CharacterKind {
     Property,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(untagged)]
 pub enum CapturingGroupKey {
     Index(usize),
-    Name(Vec<u16>),
+    Name(Wtf16),
 }
 
 pub trait Options {
@@ -322,7 +322,7 @@ impl<'a> RegExpValidator<'a> {
         let start = start.unwrap_or(0);
         let end = end.unwrap_or(source.len());
         self._src_ctx = Some(RegExpValidatorSourceContext {
-            source: source.to_owned(),
+            source: source.into(),
             start,
             end,
             kind: RegExpValidatorSourceContextKind::Literal,
@@ -366,7 +366,7 @@ impl<'a> RegExpValidator<'a> {
         let start = start.unwrap_or(0);
         let end = end.unwrap_or(source.len());
         self._src_ctx = Some(RegExpValidatorSourceContext {
-            source: source.to_owned(),
+            source: source.into(),
             start,
             end,
             kind: RegExpValidatorSourceContextKind::Flags,
@@ -384,7 +384,7 @@ impl<'a> RegExpValidator<'a> {
         let start = start.unwrap_or(0);
         let end = end.unwrap_or(source.len());
         self._src_ctx = Some(RegExpValidatorSourceContext {
-            source: source.to_owned(),
+            source: source.into(),
             start,
             end,
             kind: RegExpValidatorSourceContextKind::Pattern,

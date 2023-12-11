@@ -34,6 +34,7 @@ pub static FIXTURES_DATA: Lazy<FixtureData> = Lazy::new(|| {
     extract_fixture_files(&FIXTURES_ROOT)
         .into_iter()
         .map(|filename| {
+            println!("deserializing filename: {filename:#?}");
             (
                 filename.clone(),
                 serde_json::from_str::<FixtureDataValue>(&fs::read_to_string(filename).unwrap())

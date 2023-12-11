@@ -1,4 +1,4 @@
-use std::{collections::HashMap, mem};
+use std::{collections::HashMap, mem, ops};
 
 use id_arena::Id;
 use pathdiff::diff_paths;
@@ -11,6 +11,32 @@ use crate::{
     validator::{AssertionKind, CapturingGroupKey, CharacterKind},
     CodePoint,
 };
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct Wtf16(Vec<u16>);
+
+impl<'de> Deserialize<'de> for Wtf16 {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de> {
+        let bytes = ByteBuf::deserialize(deserializer)?.into_vec();
+        Ok(str_to_wtf_16(unsafe { mem::transmute(&*bytes) }))
+    }
+}
+
+impl ops::Deref for Wtf16 {
+    type Target = [u16];
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl From<&[u16]> for Wtf16 {
+    fn from(value: &[u16]) -> Self {
+        Self(value.to_owned())
+    }
+}
 
 #[derive(Clone)]
 pub enum Node {
@@ -40,7 +66,7 @@ impl Node {
         parent: Option<Id<Node>>,
         start: usize,
         end: usize,
-        raw: Vec<u16>,
+        raw: Wtf16,
         dot_all: bool,
         global: bool,
         has_indices: bool,
@@ -73,7 +99,7 @@ impl Node {
         parent: Option<Id<Node>>,
         start: usize,
         end: usize,
-        raw: Vec<u16>,
+        raw: Wtf16,
         alternatives: Vec<Id<Node>>,
     ) -> Self {
         Self::Pattern(Pattern {
@@ -92,7 +118,7 @@ impl Node {
         parent: Option<Id<Node>>,
         start: usize,
         end: usize,
-        raw: Vec<u16>,
+        raw: Wtf16,
         elements: Vec<Id<Node>>,
     ) -> Self {
         Self::Alternative(Alternative {
@@ -111,7 +137,7 @@ impl Node {
         parent: Option<Id<Node>>,
         start: usize,
         end: usize,
-        raw: Vec<u16>,
+        raw: Wtf16,
         alternatives: Vec<Id<Node>>,
     ) -> Self {
         Self::Group(Group {
@@ -130,8 +156,8 @@ impl Node {
         parent: Option<Id<Node>>,
         start: usize,
         end: usize,
-        raw: Vec<u16>,
-        name: Option<Vec<u16>>,
+        raw: Wtf16,
+        name: Option<Wtf16>,
         alternatives: Vec<Id<Node>>,
         references: Vec<Id<Node>>,
     ) -> Self {
@@ -154,7 +180,7 @@ impl Node {
         parent: Option<Id<Node>>,
         start: usize,
         end: usize,
-        raw: Vec<u16>,
+        raw: Wtf16,
         min: usize,
         max: usize,
         greedy: bool,
@@ -179,7 +205,7 @@ impl Node {
         parent: Option<Id<Node>>,
         start: usize,
         end: usize,
-        raw: Vec<u16>,
+        raw: Wtf16,
         kind: AssertionKind,
         negate: Option<bool>,
         alternatives: Option<Vec<Id<Node>>>,
@@ -203,11 +229,11 @@ impl Node {
         parent: Option<Id<Node>>,
         start: usize,
         end: usize,
-        raw: Vec<u16>,
+        raw: Wtf16,
         kind: CharacterKind,
         strings: Option<bool>,
-        key: Option<Vec<u16>>,
-        value: Option<Vec<u16>>,
+        key: Option<Wtf16>,
+        value: Option<Wtf16>,
         negate: Option<bool>,
     ) -> Self {
         Self::CharacterSet(CharacterSet {
@@ -230,7 +256,7 @@ impl Node {
         parent: Option<Id<Node>>,
         start: usize,
         end: usize,
-        raw: Vec<u16>,
+        raw: Wtf16,
         value: CodePoint,
     ) -> Self {
         Self::Character(Character {
@@ -249,7 +275,7 @@ impl Node {
         parent: Option<Id<Node>>,
         start: usize,
         end: usize,
-        raw: Vec<u16>,
+        raw: Wtf16,
         ref_: CapturingGroupKey,
         resolved: Option<Id<Node>>,
     ) -> Self {
@@ -270,7 +296,7 @@ impl Node {
         parent: Option<Id<Node>>,
         start: usize,
         end: usize,
-        raw: Vec<u16>,
+        raw: Wtf16,
         unicode_sets: bool,
         negate: bool,
         elements: Vec<Id<Node> /*CharacterClassElement*/>,
@@ -293,7 +319,7 @@ impl Node {
         parent: Option<Id<Node>>,
         start: usize,
         end: usize,
-        raw: Vec<u16>,
+        raw: Wtf16,
         negate: bool,
         expression: Id<Node>,
     ) -> Self {
@@ -314,7 +340,7 @@ impl Node {
         parent: Option<Id<Node>>,
         start: usize,
         end: usize,
-        raw: Vec<u16>,
+        raw: Wtf16,
         min: Id<Node>,
         max: Id<Node>,
     ) -> Self {
@@ -335,7 +361,7 @@ impl Node {
         parent: Option<Id<Node>>,
         start: usize,
         end: usize,
-        raw: Vec<u16>,
+        raw: Wtf16,
         left: Id<Node>,
         right: Id<Node>,
     ) -> Self {
@@ -356,7 +382,7 @@ impl Node {
         parent: Option<Id<Node>>,
         start: usize,
         end: usize,
-        raw: Vec<u16>,
+        raw: Wtf16,
         left: Id<Node>,
         right: Id<Node>,
     ) -> Self {
@@ -377,7 +403,7 @@ impl Node {
         parent: Option<Id<Node>>,
         start: usize,
         end: usize,
-        raw: Vec<u16>,
+        raw: Wtf16,
         alternatives: Vec<Id<Node>>,
     ) -> Self {
         Self::ClassStringDisjunction(ClassStringDisjunction {
@@ -396,7 +422,7 @@ impl Node {
         parent: Option<Id<Node>>,
         start: usize,
         end: usize,
-        raw: Vec<u16>,
+        raw: Wtf16,
         elements: Vec<Id<Node>>,
     ) -> Self {
         Self::StringAlternative(StringAlternative {
@@ -415,7 +441,7 @@ impl Node {
         parent: Option<Id<Node>>,
         start: usize,
         end: usize,
-        raw: Vec<u16>,
+        raw: Wtf16,
         pattern: Id<Node>,
         flags: Id<Node>,
     ) -> Self {
@@ -521,7 +547,7 @@ pub trait NodeInterface {
     fn end(&self) -> usize;
     fn set_end(&mut self, end: usize);
     fn raw(&self) -> &[u16];
-    fn set_raw(&mut self, raw: Vec<u16>);
+    fn set_raw(&mut self, raw: Wtf16);
 }
 
 impl NodeInterface for Node {
@@ -557,7 +583,7 @@ impl NodeInterface for Node {
         todo!()
     }
 
-    fn set_raw(&mut self, raw: Vec<u16>) {
+    fn set_raw(&mut self, raw: Wtf16) {
         todo!()
     }
 }
@@ -666,7 +692,7 @@ pub struct NodeBase {
     parent: Option<Id<Node>>,
     start: usize,
     end: usize,
-    raw: Vec<u16>,
+    raw: Wtf16,
 }
 
 impl NodeInterface for NodeBase {
@@ -702,7 +728,7 @@ impl NodeInterface for NodeBase {
         &self.raw
     }
 
-    fn set_raw(&mut self, raw: Vec<u16>) {
+    fn set_raw(&mut self, raw: Wtf16) {
         self.raw = raw;
     }
 }
@@ -991,17 +1017,9 @@ pub struct RegExpLiteral {
     pub flags: Id<Node>,   /*Flags*/
 }
 
-pub fn str_to_wtf_16(value: &str) -> Vec<u16> {
+pub fn str_to_wtf_16(value: &str) -> Wtf16 {
     let wtf8 = Wtf8::from_str(value);
-    wtf8.to_ill_formed_utf16().collect()
-}
-
-fn deserialize_wtf_16<'de, D>(deserializer: D) -> Result<Vec<u16>, D::Error>
-where
-    D: Deserializer<'de>,
-{
-    let bytes = ByteBuf::deserialize(deserializer)?.into_vec();
-    Ok(str_to_wtf_16(unsafe { mem::transmute(&*bytes) }))
+    Wtf16(wtf8.to_ill_formed_utf16().collect())
 }
 
 fn deserialize_possibly_infinity_usize<'de, D>(deserializer: D) -> Result<usize, D::Error>
@@ -1030,9 +1048,7 @@ pub struct RegExpLiteralUnresolved {
     pub parent: Option<String>,
     pub start: usize,
     pub end: usize,
-    // TODO: Encapsulate in an eg Wtf16 type?
-    #[serde(deserialize_with = "deserialize_wtf_16")]
-    pub raw: Vec<u16>,
+    pub raw: Wtf16,
     pub pattern: NodeUnresolved,
     pub flags: NodeUnresolved,
 }
@@ -1048,8 +1064,7 @@ pub struct PatternUnresolved {
     pub parent: Option<String>,
     pub start: usize,
     pub end: usize,
-    #[serde(deserialize_with = "deserialize_wtf_16")]
-    pub raw: Vec<u16>,
+    pub raw: Wtf16,
     pub alternatives: Vec<NodeUnresolved>,
 }
 
@@ -1064,8 +1079,7 @@ pub struct AlternativeUnresolved {
     pub parent: Option<String>,
     pub start: usize,
     pub end: usize,
-    #[serde(deserialize_with = "deserialize_wtf_16")]
-    pub raw: Vec<u16>,
+    pub raw: Wtf16,
     pub elements: Vec<NodeUnresolved>,
 }
 
@@ -1080,15 +1094,14 @@ pub struct GroupUnresolved {
     pub parent: Option<String>,
     pub start: usize,
     pub end: usize,
-    #[serde(deserialize_with = "deserialize_wtf_16")]
-    pub raw: Vec<u16>,
+    pub raw: Wtf16,
     pub alternatives: Vec<NodeUnresolved>,
 }
 
 #[derive(Clone)]
 pub struct CapturingGroup {
     _base: NodeBase,
-    pub name: Option<Vec<u16>>,
+    pub name: Option<Wtf16>,
     pub alternatives: Vec<Id<Node> /*Alternative*/>,
     pub references: Vec<Id<Node> /*Backreference*/>,
 }
@@ -1098,9 +1111,8 @@ pub struct CapturingGroupUnresolved {
     pub parent: Option<String>,
     pub start: usize,
     pub end: usize,
-    #[serde(deserialize_with = "deserialize_wtf_16")]
-    pub raw: Vec<u16>,
-    pub name: Option<Vec<u16>>,
+    pub raw: Wtf16,
+    pub name: Option<Wtf16>,
     pub alternatives: Vec<NodeUnresolved>,
     pub references: Vec<String>,
 }
@@ -1118,8 +1130,7 @@ pub struct AssertionUnresolved {
     pub parent: Option<String>,
     pub start: usize,
     pub end: usize,
-    #[serde(deserialize_with = "deserialize_wtf_16")]
-    pub raw: Vec<u16>,
+    pub raw: Wtf16,
     pub kind: AssertionKind,
     pub negate: Option<bool>,
     pub alternatives: Option<Vec<NodeUnresolved>>,
@@ -1139,8 +1150,7 @@ pub struct QuantifierUnresolved {
     pub parent: Option<String>,
     pub start: usize,
     pub end: usize,
-    #[serde(deserialize_with = "deserialize_wtf_16")]
-    pub raw: Vec<u16>,
+    pub raw: Wtf16,
     min: usize,
     #[serde(deserialize_with = "deserialize_possibly_infinity_usize")]
     max: usize,
@@ -1162,8 +1172,7 @@ pub struct CharacterClassUnresolved {
     pub parent: Option<String>,
     pub start: usize,
     pub end: usize,
-    #[serde(deserialize_with = "deserialize_wtf_16")]
-    pub raw: Vec<u16>,
+    pub raw: Wtf16,
     pub unicode_sets: bool,
     pub negate: bool,
     pub elements: Vec<NodeUnresolved>,
@@ -1181,8 +1190,7 @@ pub struct CharacterClassRangeUnresolved {
     pub parent: Option<String>,
     pub start: usize,
     pub end: usize,
-    #[serde(deserialize_with = "deserialize_wtf_16")]
-    pub raw: Vec<u16>,
+    pub raw: Wtf16,
     pub min: NodeUnresolved,
     pub max: NodeUnresolved,
 }
@@ -1192,8 +1200,8 @@ pub struct CharacterSet {
     _base: NodeBase,
     pub kind: CharacterKind,
     pub strings: Option<bool>,
-    pub key: Option<Vec<u16>>,
-    pub value: Option<Vec<u16>>,
+    pub key: Option<Wtf16>,
+    pub value: Option<Wtf16>,
     pub negate: Option<bool>,
 }
 
@@ -1202,12 +1210,11 @@ pub struct CharacterSetUnresolved {
     pub parent: Option<String>,
     pub start: usize,
     pub end: usize,
-    #[serde(deserialize_with = "deserialize_wtf_16")]
-    pub raw: Vec<u16>,
+    pub raw: Wtf16,
     pub kind: CharacterKind,
     pub strings: Option<bool>,
-    pub key: Option<Vec<u16>>,
-    pub value: Option<Vec<u16>>,
+    pub key: Option<Wtf16>,
+    pub value: Option<Wtf16>,
     pub negate: Option<bool>,
 }
 
@@ -1223,8 +1230,7 @@ pub struct ExpressionCharacterClassUnresolved {
     pub parent: Option<String>,
     pub start: usize,
     pub end: usize,
-    #[serde(deserialize_with = "deserialize_wtf_16")]
-    pub raw: Vec<u16>,
+    pub raw: Wtf16,
     pub negate: bool,
     pub expression: NodeUnresolved,
 }
@@ -1241,8 +1247,7 @@ pub struct ClassIntersectionUnresolved {
     pub parent: Option<String>,
     pub start: usize,
     pub end: usize,
-    #[serde(deserialize_with = "deserialize_wtf_16")]
-    pub raw: Vec<u16>,
+    pub raw: Wtf16,
     pub left: NodeUnresolved,
     pub right: NodeUnresolved,
 }
@@ -1259,8 +1264,7 @@ pub struct ClassSubtractionUnresolved {
     pub parent: Option<String>,
     pub start: usize,
     pub end: usize,
-    #[serde(deserialize_with = "deserialize_wtf_16")]
-    pub raw: Vec<u16>,
+    pub raw: Wtf16,
     pub left: NodeUnresolved,
     pub right: NodeUnresolved,
 }
@@ -1276,8 +1280,7 @@ pub struct ClassStringDisjunctionUnresolved {
     pub parent: Option<String>,
     pub start: usize,
     pub end: usize,
-    #[serde(deserialize_with = "deserialize_wtf_16")]
-    pub raw: Vec<u16>,
+    pub raw: Wtf16,
     pub alternatives: Vec<NodeUnresolved>,
 }
 
@@ -1292,8 +1295,7 @@ pub struct StringAlternativeUnresolved {
     pub parent: Option<String>,
     pub start: usize,
     pub end: usize,
-    #[serde(deserialize_with = "deserialize_wtf_16")]
-    pub raw: Vec<u16>,
+    pub raw: Wtf16,
     pub elements: Vec<NodeUnresolved>,
 }
 
@@ -1308,8 +1310,7 @@ pub struct CharacterUnresolved {
     pub parent: Option<String>,
     pub start: usize,
     pub end: usize,
-    #[serde(deserialize_with = "deserialize_wtf_16")]
-    pub raw: Vec<u16>,
+    pub raw: Wtf16,
     pub value: CodePoint,
 }
 
@@ -1325,8 +1326,7 @@ pub struct BackreferenceUnresolved {
     pub parent: Option<String>,
     pub start: usize,
     pub end: usize,
-    #[serde(deserialize_with = "deserialize_wtf_16")]
-    pub raw: Vec<u16>,
+    pub raw: Wtf16,
     #[serde(rename = "ref")]
     pub ref_: CapturingGroupKey,
     pub resolved: String,
@@ -1351,8 +1351,7 @@ pub struct FlagsUnresolved {
     pub parent: Option<String>,
     pub start: usize,
     pub end: usize,
-    #[serde(deserialize_with = "deserialize_wtf_16")]
-    pub raw: Vec<u16>,
+    pub raw: Wtf16,
     pub dot_all: bool,
     pub global: bool,
     pub has_indices: bool,
