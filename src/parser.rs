@@ -791,15 +791,19 @@ impl<'a> validator::Options for RegExpParserState<'a> {
             .push(node);
     }
 
-    fn on_literal_enter(&self, start: usize) {}
+    fn on_string_alternative_leave(&self, start: usize, end: usize, _index: usize) {
+        let node = self._node.borrow().unwrap();
+        assert!(matches!(
+            &*self._arena.node(node),
+            Node::StringAlternative(_)
+        ));
 
-    fn on_literal_leave(&self, start: usize, end: usize) {}
-
-    fn on_disjunction_enter(&self, start: usize) {}
-
-    fn on_disjunction_leave(&self, start: usize, end: usize) {}
-
-    fn on_string_alternative_leave(&self, start: usize, TODO: usize, a: usize) {}
+        self._arena.node_mut(node).thrush(|mut node| {
+            node.set_end(end);
+            node.set_raw(self.source[start..end].to_owned());
+        });
+        *self._node.borrow_mut() = self._arena.node(node).maybe_parent();
+    }
 }
 
 pub struct RegExpParser<'a> {

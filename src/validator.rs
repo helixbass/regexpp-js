@@ -199,12 +199,37 @@ pub trait Options {
     fn on_capturing_group_leave(&self, start: usize, end: usize, name: Option<&str>) {}
     fn on_quantifier(&self, start: usize, end: usize, min: usize, max: usize, greedy: bool) {}
     fn on_lookaround_assertion_enter(&self, start: usize, kind: AssertionKind, negate: bool) {}
-    fn on_lookaround_assertion_leave(&self, start: usize, end: usize, kind: AssertionKind, negate: bool) {}
+    fn on_lookaround_assertion_leave(
+        &self,
+        start: usize,
+        end: usize,
+        kind: AssertionKind,
+        negate: bool,
+    ) {
+    }
     fn on_edge_assertion(&self, start: usize, end: usize, kind: AssertionKind) {}
-    fn on_word_boundary_assertion(&self, start: usize, end: usize, kind: AssertionKind, negate: bool) {}
+    fn on_word_boundary_assertion(
+        &self,
+        start: usize,
+        end: usize,
+        kind: AssertionKind,
+        negate: bool,
+    ) {
+    }
     fn on_any_character_set(&self, start: usize, end: usize, kind: CharacterKind) {}
-    fn on_escape_character_set(&self, start: usize, end: usize, kind: CharacterKind, negate: bool) {}
-    fn on_unicode_property_character_set(&self, start: usize, end: usize, kind: CharacterKind, key: &str, value: Option<&str>, negate: bool, strings: bool) {}
+    fn on_escape_character_set(&self, start: usize, end: usize, kind: CharacterKind, negate: bool) {
+    }
+    fn on_unicode_property_character_set(
+        &self,
+        start: usize,
+        end: usize,
+        kind: CharacterKind,
+        key: &str,
+        value: Option<&str>,
+        negate: bool,
+        strings: bool,
+    ) {
+    }
     fn on_character(&self, start: usize, end: usize, value: CodePoint) {}
     fn on_backreference(&self, start: usize, end: usize, ref_: &CapturingGroupKey) {}
     fn on_character_class_enter(&self, start: usize, negate: bool, unicode_sets: bool) {}
@@ -215,7 +240,7 @@ pub trait Options {
     fn on_class_string_disjunction_enter(&self, start: usize) {}
     fn on_class_string_disjunction_leave(&self, start: usize, end: usize) {}
     fn on_string_alternative_enter(&self, start: usize, index: usize) {}
-    fn on_string_alternative_leave(&self, start: usize, TODO: usize, a: usize) {}
+    fn on_string_alternative_leave(&self, start: usize, end: usize, index: usize) {}
 }
 
 struct NoopOptions;
@@ -502,7 +527,8 @@ impl<'a> RegExpValidator<'a> {
     }
 
     fn on_lookaround_assertion_enter(&mut self, start: usize, kind: AssertionKind, negate: bool) {
-        self._options.on_lookaround_assertion_enter(start, kind, negate);
+        self._options
+            .on_lookaround_assertion_enter(start, kind, negate);
     }
 
     fn on_lookaround_assertion_leave(
@@ -512,7 +538,8 @@ impl<'a> RegExpValidator<'a> {
         kind: AssertionKind,
         negate: bool,
     ) {
-        self._options.on_lookaround_assertion_leave(start, end, kind, negate);
+        self._options
+            .on_lookaround_assertion_leave(start, end, kind, negate);
     }
 
     fn on_edge_assertion(&mut self, start: usize, end: usize, kind: AssertionKind) {
@@ -526,7 +553,8 @@ impl<'a> RegExpValidator<'a> {
         kind: AssertionKind,
         negate: bool,
     ) {
-        self._options.on_word_boundary_assertion(start, end, kind, negate);
+        self._options
+            .on_word_boundary_assertion(start, end, kind, negate);
     }
 
     fn on_any_character_set(&mut self, start: usize, end: usize, kind: CharacterKind) {
@@ -538,7 +566,8 @@ impl<'a> RegExpValidator<'a> {
     }
 
     fn on_character_class_enter(&mut self, start: usize, negate: bool, unicode_sets: bool) {
-        self._options.on_character_class_enter(start, negate, unicode_sets);
+        self._options
+            .on_character_class_enter(start, negate, unicode_sets);
     }
 
     fn on_character_class_leave(&mut self, start: usize, end: usize, negate: bool) {
