@@ -10,22 +10,23 @@ use crate::{
     reader::CodePoint,
     regexp_syntax_error::{self, new_reg_exp_syntax_error},
     unicode::{
-        combine_surrogate_pair, digit_to_int, is_decimal_digit, is_id_start, is_lead_surrogate,
-        is_line_terminator, is_octal_digit, is_trail_surrogate, is_valid_lone_unicode_property,
-        is_valid_lone_unicode_property_of_string, is_valid_unicode_property, AMPERSAND, ASTERISK,
-        BACKSPACE, CARRIAGE_RETURN, CHARACTER_TABULATION, CIRCUMFLEX_ACCENT, COLON, COMMA,
-        COMMERCIAL_AT, DIGIT_NINE, DIGIT_ONE, DIGIT_ZERO, DOLLAR_SIGN, EQUALS_SIGN,
-        EXCLAMATION_MARK, FORM_FEED, FULL_STOP, GRAVE_ACCENT, GREATER_THAN_SIGN, HYPHEN_MINUS,
-        LATIN_CAPITAL_LETTER_B, LATIN_CAPITAL_LETTER_D, LATIN_CAPITAL_LETTER_P,
-        LATIN_CAPITAL_LETTER_S, LATIN_CAPITAL_LETTER_W, LATIN_SMALL_LETTER_B, LATIN_SMALL_LETTER_C,
-        LATIN_SMALL_LETTER_D, LATIN_SMALL_LETTER_F, LATIN_SMALL_LETTER_G, LATIN_SMALL_LETTER_I,
+        combine_surrogate_pair, digit_to_int, is_decimal_digit, is_id_continue, is_id_start,
+        is_lead_surrogate, is_line_terminator, is_octal_digit, is_trail_surrogate,
+        is_valid_lone_unicode_property, is_valid_lone_unicode_property_of_string,
+        is_valid_unicode_property, AMPERSAND, ASTERISK, BACKSPACE, CARRIAGE_RETURN,
+        CHARACTER_TABULATION, CIRCUMFLEX_ACCENT, COLON, COMMA, COMMERCIAL_AT, DIGIT_NINE,
+        DIGIT_ONE, DIGIT_ZERO, DOLLAR_SIGN, EQUALS_SIGN, EXCLAMATION_MARK, FORM_FEED, FULL_STOP,
+        GRAVE_ACCENT, GREATER_THAN_SIGN, HYPHEN_MINUS, LATIN_CAPITAL_LETTER_B,
+        LATIN_CAPITAL_LETTER_D, LATIN_CAPITAL_LETTER_P, LATIN_CAPITAL_LETTER_S,
+        LATIN_CAPITAL_LETTER_W, LATIN_SMALL_LETTER_B, LATIN_SMALL_LETTER_C, LATIN_SMALL_LETTER_D,
+        LATIN_SMALL_LETTER_F, LATIN_SMALL_LETTER_G, LATIN_SMALL_LETTER_I, LATIN_SMALL_LETTER_K,
         LATIN_SMALL_LETTER_M, LATIN_SMALL_LETTER_N, LATIN_SMALL_LETTER_P, LATIN_SMALL_LETTER_Q,
         LATIN_SMALL_LETTER_R, LATIN_SMALL_LETTER_S, LATIN_SMALL_LETTER_T, LATIN_SMALL_LETTER_U,
         LATIN_SMALL_LETTER_V, LATIN_SMALL_LETTER_W, LATIN_SMALL_LETTER_X, LATIN_SMALL_LETTER_Y,
         LEFT_CURLY_BRACKET, LEFT_PARENTHESIS, LEFT_SQUARE_BRACKET, LESS_THAN_SIGN, LINE_FEED,
         LINE_TABULATION, LOW_LINE, NUMBER_SIGN, PERCENT_SIGN, PLUS_SIGN, QUESTION_MARK,
         REVERSE_SOLIDUS, RIGHT_CURLY_BRACKET, RIGHT_PARENTHESIS, RIGHT_SQUARE_BRACKET, SEMICOLON,
-        SOLIDUS, TILDE, VERTICAL_LINE,
+        SOLIDUS, TILDE, VERTICAL_LINE, ZERO_WIDTH_JOINER, ZERO_WIDTH_NON_JOINER,
     },
     EcmaVersion, Reader, RegExpSyntaxError, Wtf16,
 };
@@ -136,7 +137,7 @@ fn is_identifier_start_char(cp: CodePoint) -> bool {
 }
 
 fn is_identifier_part_char(cp: CodePoint) -> bool {
-    unimplemented!()
+    is_id_continue(cp) || matches!(cp, DOLLAR_SIGN | ZERO_WIDTH_NON_JOINER | ZERO_WIDTH_JOINER)
 }
 
 #[derive(Copy, Clone, Default)]
@@ -690,6 +691,14 @@ impl<'a> RegExpValidator<'a> {
 
     fn on_class_string_disjunction_leave(&mut self, start: usize, end: usize) {
         self._options.on_class_string_disjunction_leave(start, end);
+    }
+
+    fn on_string_alternative_enter(&mut self, start: usize, index: usize) {
+        self._options.on_string_alternative_enter(start, index);
+    }
+
+    fn on_string_alternative_leave(&mut self, start: usize, end: usize, index: usize) {
+        self._options.on_string_alternative_leave(start, end, index);
     }
 
     fn _parse_flags_option_to_mode(
@@ -1634,7 +1643,7 @@ impl<'a> RegExpValidator<'a> {
             let mut i = 0;
             let mut may_contain_strings = false;
             while {
-                if self.consume_class_string(i).may_contain_strings == Some(true) {
+                if self.consume_class_string(i)?.may_contain_strings == Some(true) {
                     may_contain_strings = true;
                 }
                 i += 1;
@@ -1653,8 +1662,20 @@ impl<'a> RegExpValidator<'a> {
         Ok(None)
     }
 
-    fn consume_class_string(&self, i: usize) -> UnicodeSetsConsumeResult {
-        unimplemented!()
+    fn consume_class_string(&mut self, i: usize) -> Result<UnicodeSetsConsumeResult, RegExpSyntaxError> {
+        let start = self.index();
+
+        let mut count = 0;
+        self.on_string_alternative_enter(start, i);
+        while self.current_code_point().is_some() &&
+            self.consume_class_set_character()? {
+            count += 1;
+        }
+        self.on_string_alternative_leave(start, self.index(), i);
+
+        Ok(UnicodeSetsConsumeResult {
+            may_contain_strings: Some(count != 1),
+        })
     }
 
     fn consume_class_set_character(&mut self) -> Result<bool, RegExpSyntaxError> {
@@ -1861,8 +1882,30 @@ impl<'a> RegExpValidator<'a> {
         unimplemented!()
     }
 
-    fn eat_identity_escape(&self) -> bool {
-        unimplemented!()
+    fn eat_identity_escape(&mut self) -> bool {
+        let cp = self.current_code_point();
+        if self.is_valid_identity_escape(cp) {
+            self._last_int_value = cp;
+            self.advance();
+            return true;
+        }
+        false
+    }
+
+    fn is_valid_identity_escape(&self, cp: Option<CodePoint>) -> bool {
+        let Some(cp) = cp else {
+            return false;
+        };
+        if self._unicode_mode {
+            return is_syntax_character(cp) || cp == SOLIDUS;
+        }
+        if self.strict() {
+            return !is_id_continue(cp);
+        }
+        if self._n_flag {
+            return !matches!(cp, LATIN_SMALL_LETTER_C | LATIN_SMALL_LETTER_K);
+        }
+        cp != LATIN_SMALL_LETTER_C
     }
 
     fn eat_decimal_escape(&mut self) -> bool {

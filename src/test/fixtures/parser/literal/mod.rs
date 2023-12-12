@@ -6,18 +6,19 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use indexmap::IndexMap;
 use itertools::{Either, Itertools};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 
 use crate::{ast::NodeUnresolved, RegExpSyntaxError, parser};
 
-pub type FixtureData = HashMap<PathBuf, FixtureDataValue>;
+pub type FixtureData = IndexMap<PathBuf, FixtureDataValue>;
 
 #[derive(Deserialize)]
 pub struct FixtureDataValue {
     pub options: parser::Options,
-    pub patterns: HashMap<String, AstOrError>,
+    pub patterns: IndexMap<String, AstOrError>,
 }
 
 #[derive(Deserialize)]

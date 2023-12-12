@@ -9,6 +9,7 @@ edition = "2021"
 debug-cell = { git = "https://github.com/helixbass/debug-cell", rev = "d94711a" }
 derive_builder = "0.12.0"
 id-arena = "2.2.1"
+indexmap = { version = "2.1.0", features = ["serde"] }
 itertools = "0.12.0"
 once_cell = "1.19.0"
 pathdiff = "0.2.1"
