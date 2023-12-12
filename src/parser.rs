@@ -270,7 +270,7 @@ impl<'a> validator::Options for RegExpParserState<'a> {
             !matches!(&*self._arena.node(element), Node::Quantifier(_))
                 && !matches!(
                     &*self._arena.node(element),
-                    Node::Assertion(element) if element.kind == AssertionKind::Lookahead,
+                    Node::Assertion(element) if element.kind != AssertionKind::Lookahead,
                 )
         );
 
