@@ -10,19 +10,21 @@ use crate::{
     reader::CodePoint,
     regexp_syntax_error::{self, new_reg_exp_syntax_error},
     unicode::{
-        digit_to_int, is_decimal_digit, is_line_terminator, AMPERSAND, ASTERISK, BACKSPACE,
-        CARRIAGE_RETURN, CHARACTER_TABULATION, CIRCUMFLEX_ACCENT, COLON, COMMA, COMMERCIAL_AT,
-        DIGIT_NINE, DIGIT_ONE, DIGIT_ZERO, DOLLAR_SIGN, EQUALS_SIGN, EXCLAMATION_MARK, FORM_FEED,
-        FULL_STOP, GRAVE_ACCENT, GREATER_THAN_SIGN, HYPHEN_MINUS, LATIN_CAPITAL_LETTER_B,
+        combine_surrogate_pair, digit_to_int, is_decimal_digit, is_id_start, is_lead_surrogate,
+        is_line_terminator, is_trail_surrogate, AMPERSAND, ASTERISK, BACKSPACE, CARRIAGE_RETURN,
+        CHARACTER_TABULATION, CIRCUMFLEX_ACCENT, COLON, COMMA, COMMERCIAL_AT, DIGIT_NINE,
+        DIGIT_ONE, DIGIT_ZERO, DOLLAR_SIGN, EQUALS_SIGN, EXCLAMATION_MARK, FORM_FEED, FULL_STOP,
+        GRAVE_ACCENT, GREATER_THAN_SIGN, HYPHEN_MINUS, LATIN_CAPITAL_LETTER_B,
         LATIN_CAPITAL_LETTER_D, LATIN_CAPITAL_LETTER_P, LATIN_CAPITAL_LETTER_S,
         LATIN_CAPITAL_LETTER_W, LATIN_SMALL_LETTER_B, LATIN_SMALL_LETTER_C, LATIN_SMALL_LETTER_D,
         LATIN_SMALL_LETTER_F, LATIN_SMALL_LETTER_G, LATIN_SMALL_LETTER_I, LATIN_SMALL_LETTER_M,
         LATIN_SMALL_LETTER_N, LATIN_SMALL_LETTER_P, LATIN_SMALL_LETTER_Q, LATIN_SMALL_LETTER_R,
         LATIN_SMALL_LETTER_S, LATIN_SMALL_LETTER_T, LATIN_SMALL_LETTER_U, LATIN_SMALL_LETTER_V,
-        LATIN_SMALL_LETTER_W, LATIN_SMALL_LETTER_Y, LEFT_CURLY_BRACKET, LEFT_PARENTHESIS,
-        LEFT_SQUARE_BRACKET, LESS_THAN_SIGN, LINE_FEED, LINE_TABULATION, NUMBER_SIGN, PERCENT_SIGN,
-        PLUS_SIGN, QUESTION_MARK, REVERSE_SOLIDUS, RIGHT_CURLY_BRACKET, RIGHT_PARENTHESIS,
-        RIGHT_SQUARE_BRACKET, SEMICOLON, SOLIDUS, TILDE, VERTICAL_LINE, LATIN_SMALL_LETTER_X,
+        LATIN_SMALL_LETTER_W, LATIN_SMALL_LETTER_X, LATIN_SMALL_LETTER_Y, LEFT_CURLY_BRACKET,
+        LEFT_PARENTHESIS, LEFT_SQUARE_BRACKET, LESS_THAN_SIGN, LINE_FEED, LINE_TABULATION,
+        LOW_LINE, NUMBER_SIGN, PERCENT_SIGN, PLUS_SIGN, QUESTION_MARK, REVERSE_SOLIDUS,
+        RIGHT_CURLY_BRACKET, RIGHT_PARENTHESIS, RIGHT_SQUARE_BRACKET, SEMICOLON, SOLIDUS, TILDE,
+        VERTICAL_LINE,
     },
     EcmaVersion, Reader, RegExpSyntaxError, Wtf16,
 };
@@ -126,6 +128,10 @@ fn is_class_set_syntax_character(cp: CodePoint) -> bool {
 
 fn is_class_set_reserved_punctuator(cp: Option<CodePoint>) -> bool {
     cp.matches(|cp| CLASS_SET_RESERVED_PUNCTUATOR.contains(&cp))
+}
+
+fn is_identifier_start_char(cp: CodePoint) -> bool {
+    is_id_start(cp) || cp == DOLLAR_SIGN || cp == LOW_LINE
 }
 
 #[derive(Copy, Clone, Default)]
@@ -1657,7 +1663,53 @@ impl<'a> RegExpValidator<'a> {
         Ok(false)
     }
 
-    fn eat_reg_exp_identifier_name(&self) -> bool {
+    fn eat_reg_exp_identifier_name(&mut self) -> bool {
+        if self.eat_reg_exp_identifier_start() {
+            self._last_str_value = self._last_int_value.unwrap().into();
+            while self.eat_reg_exp_identifier_part() {
+                (*self._last_str_value)
+                    .extend(Wtf16::from(self._last_int_value.unwrap()).iter().copied());
+            }
+            return true;
+        }
+        false
+    }
+
+    fn eat_reg_exp_identifier_start(&mut self) -> bool {
+        let start = self.index();
+        let force_u_flag = !self._unicode_mode && self.ecma_version() >= EcmaVersion::_2020;
+        let mut cp = self.current_code_point();
+        self.advance();
+
+        if cp == Some(REVERSE_SOLIDUS)
+            && self.eat_reg_exp_unicode_escape_sequence(Some(force_u_flag))
+        {
+            cp = self._last_int_value;
+        } else if force_u_flag
+            && cp.matches(|cp| is_lead_surrogate(cp))
+            && self
+                .current_code_point()
+                .matches(|current_code_point| is_trail_surrogate(current_code_point))
+        {
+            cp = Some(combine_surrogate_pair(
+                cp.unwrap(),
+                self.current_code_point().unwrap(),
+            ));
+            self.advance();
+        }
+
+        if cp.matches(|cp| is_identifier_start_char(cp)) {
+            self._last_int_value = cp;
+            return true;
+        }
+
+        if self.index() != start {
+            self.rewind(start);
+        }
+        false
+    }
+
+    fn eat_reg_exp_identifier_part(&self) -> bool {
         unimplemented!()
     }
 

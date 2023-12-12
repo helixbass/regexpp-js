@@ -1,11 +1,10 @@
-use std::{ops, mem};
+use std::{mem, ops};
 
 use serde::{Deserialize, Deserializer};
 use serde_bytes::ByteBuf;
 use wtf8::Wtf8;
 
-use crate::reader::is_surrogate_code_point;
-
+use crate::CodePoint;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Hash)]
 pub struct Wtf16(Vec<u16>);
@@ -23,7 +22,8 @@ impl Wtf16 {
 impl<'de> Deserialize<'de> for Wtf16 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
-        D: Deserializer<'de> {
+        D: Deserializer<'de>,
+    {
         let bytes = ByteBuf::deserialize(deserializer)?.into_vec();
         let as_str: &str = unsafe { mem::transmute(&*bytes) };
         Ok(as_str.into())
@@ -35,6 +35,12 @@ impl ops::Deref for Wtf16 {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl ops::DerefMut for Wtf16 {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
     }
 }
 
@@ -57,15 +63,27 @@ impl From<&str> for Wtf16 {
     }
 }
 
+impl From<CodePoint> for Wtf16 {
+    fn from(value: CodePoint) -> Self {
+        Self(
+            if value > 0xffff {
+                let mut buffer: Vec<u16> = Vec::with_capacity(2);
+                char::try_from(value).unwrap().encode_utf16(&mut buffer);
+                buffer
+            } else {
+                vec![u16::try_from(value).unwrap()]
+            }.into()
+        )
+    }
+}
+
 pub struct SplitCodePoints<'a> {
     original: &'a Wtf16,
     next_index: usize,
 }
 
 impl<'a> SplitCodePoints<'a> {
-    pub fn new(
-        original: &'a Wtf16,
-    ) -> Self {
+    pub fn new(original: &'a Wtf16) -> Self {
         Self {
             original,
             next_index: 0,
@@ -86,4 +104,20 @@ impl<'a> Iterator for SplitCodePoints<'a> {
         }
         unimplemented!()
     }
+}
+
+pub fn is_surrogate_code_point(value: u16) -> bool {
+    (0xd800..=0xdfff).contains(&value)
+}
+
+pub fn get_single_surrogate_pair_code_point(values: &[u16]) -> CodePoint {
+    let mut iterator = char::decode_utf16(values.into_iter().copied());
+    let first_char = iterator
+        .next()
+        .expect("Should've gotten at least one char")
+        .expect("Expected valid surrogate pair");
+    assert!(iterator.next().is_none(), "Expected only one char");
+    let first_code_point: CodePoint = first_char.into();
+    assert!(first_code_point > 0xffff);
+    first_code_point
 }

@@ -1,5 +1,8 @@
 use crate::CodePoint;
 
+mod ids;
+pub use ids::*;
+
 pub const NULL: CodePoint = 0x00;
 pub const BACKSPACE: CodePoint = 0x08;
 pub const CHARACTER_TABULATION: CodePoint = 0x09;
@@ -94,4 +97,16 @@ pub fn digit_to_int(code: CodePoint) -> CodePoint {
         return code - LATIN_CAPITAL_LETTER_A + 10;
     }
     code - DIGIT_ZERO
+}
+
+pub fn is_lead_surrogate(code: CodePoint) -> bool {
+    code >= 0xd800 && code <= 0xdbff
+}
+
+pub fn is_trail_surrogate(code: CodePoint) -> bool {
+    code >= 0xdc00 && code <= 0xdfff
+}
+
+pub fn combine_surrogate_pair(lead: CodePoint, trail: CodePoint) -> CodePoint {
+    (lead - 0xd800) * 0x400 + (trail - 0xdc00) + 0x10000
 }

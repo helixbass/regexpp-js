@@ -1,22 +1,6 @@
-use crate::Wtf16;
+use crate::{Wtf16, wtf16::{is_surrogate_code_point, get_single_surrogate_pair_code_point}};
 
 pub type CodePoint = u32;
-
-pub fn is_surrogate_code_point(value: u16) -> bool {
-    (0xd800..=0xdfff).contains(&value)
-}
-
-fn get_single_surrogate_pair_code_point(values: &[u16]) -> CodePoint {
-    let mut iterator = char::decode_utf16(values.into_iter().copied());
-    let first_char = iterator
-        .next()
-        .expect("Should've gotten at least one char")
-        .expect("Expected valid surrogate pair");
-    assert!(iterator.next().is_none(), "Expected only one char");
-    let first_code_point: CodePoint = first_char.into();
-    assert!(first_code_point > 0xffff);
-    first_code_point
-}
 
 pub struct Reader {
     _use_unicode_impl: bool,
