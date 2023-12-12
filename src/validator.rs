@@ -1890,8 +1890,26 @@ impl<'a> RegExpValidator<'a> {
         Ok(false)
     }
 
-    fn eat_reg_exp_unicode_surrogate_pair_escape(&self) -> bool {
-        unimplemented!()
+    fn eat_reg_exp_unicode_surrogate_pair_escape(&mut self) -> bool {
+        let start = self.index();
+
+        if self.eat_fixed_hex_digits(4) {
+            let lead = self._last_int_value.unwrap();
+            if is_lead_surrogate(lead) &&
+                self.eat(REVERSE_SOLIDUS) &&
+                self.eat(LATIN_SMALL_LETTER_U) &&
+                self.eat_fixed_hex_digits(4) {
+                let trail = self._last_int_value.unwrap();
+                if is_trail_surrogate(trail) {
+                    self._last_int_value = Some(combine_surrogate_pair(lead, trail));
+                    return true;
+                }
+            }
+
+            self.rewind(start);
+        }
+
+        false
     }
 
     fn eat_reg_exp_unicode_code_point_escape(&self) -> bool {
