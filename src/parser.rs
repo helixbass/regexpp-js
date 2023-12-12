@@ -239,6 +239,9 @@ impl<'a> validator::Options for RegExpParserState<'a> {
             Default::default(),
             Default::default(),
         )));
+        let _node = self._node.borrow().unwrap();
+        self._arena.node_mut(parent).as_alternative_mut().elements.push(_node);
+        self._capturing_groups.borrow_mut().push(_node);
     }
 
     fn on_capturing_group_leave(&self, start: usize, end: usize, _name: Option<&Wtf16>) {
