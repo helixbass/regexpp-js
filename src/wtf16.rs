@@ -1,4 +1,4 @@
-use std::{mem, ops};
+use std::{mem, ops, string::FromUtf16Error};
 
 use serde::{Deserialize, Deserializer};
 use serde_bytes::ByteBuf;
@@ -74,6 +74,14 @@ impl From<CodePoint> for Wtf16 {
                 vec![u16::try_from(value).unwrap()]
             }.into()
         )
+    }
+}
+
+impl TryFrom<&Wtf16> for String {
+    type Error = FromUtf16Error;
+
+    fn try_from(value: &Wtf16) -> Result<Self, Self::Error> {
+        Self::from_utf16(value)
     }
 }
 

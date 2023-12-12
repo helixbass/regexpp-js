@@ -1,7 +1,10 @@
 use crate::CodePoint;
 
 mod ids;
+mod properties;
+
 pub use ids::*;
+pub use properties::*;
 
 pub const NULL: CodePoint = 0x00;
 pub const BACKSPACE: CodePoint = 0x08;

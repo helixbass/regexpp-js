@@ -11,20 +11,20 @@ use crate::{
     regexp_syntax_error::{self, new_reg_exp_syntax_error},
     unicode::{
         combine_surrogate_pair, digit_to_int, is_decimal_digit, is_id_start, is_lead_surrogate,
-        is_line_terminator, is_trail_surrogate, AMPERSAND, ASTERISK, BACKSPACE, CARRIAGE_RETURN,
-        CHARACTER_TABULATION, CIRCUMFLEX_ACCENT, COLON, COMMA, COMMERCIAL_AT, DIGIT_NINE,
-        DIGIT_ONE, DIGIT_ZERO, DOLLAR_SIGN, EQUALS_SIGN, EXCLAMATION_MARK, FORM_FEED, FULL_STOP,
-        GRAVE_ACCENT, GREATER_THAN_SIGN, HYPHEN_MINUS, LATIN_CAPITAL_LETTER_B,
-        LATIN_CAPITAL_LETTER_D, LATIN_CAPITAL_LETTER_P, LATIN_CAPITAL_LETTER_S,
-        LATIN_CAPITAL_LETTER_W, LATIN_SMALL_LETTER_B, LATIN_SMALL_LETTER_C, LATIN_SMALL_LETTER_D,
-        LATIN_SMALL_LETTER_F, LATIN_SMALL_LETTER_G, LATIN_SMALL_LETTER_I, LATIN_SMALL_LETTER_M,
-        LATIN_SMALL_LETTER_N, LATIN_SMALL_LETTER_P, LATIN_SMALL_LETTER_Q, LATIN_SMALL_LETTER_R,
-        LATIN_SMALL_LETTER_S, LATIN_SMALL_LETTER_T, LATIN_SMALL_LETTER_U, LATIN_SMALL_LETTER_V,
-        LATIN_SMALL_LETTER_W, LATIN_SMALL_LETTER_X, LATIN_SMALL_LETTER_Y, LEFT_CURLY_BRACKET,
-        LEFT_PARENTHESIS, LEFT_SQUARE_BRACKET, LESS_THAN_SIGN, LINE_FEED, LINE_TABULATION,
-        LOW_LINE, NUMBER_SIGN, PERCENT_SIGN, PLUS_SIGN, QUESTION_MARK, REVERSE_SOLIDUS,
-        RIGHT_CURLY_BRACKET, RIGHT_PARENTHESIS, RIGHT_SQUARE_BRACKET, SEMICOLON, SOLIDUS, TILDE,
-        VERTICAL_LINE,
+        is_line_terminator, is_trail_surrogate, is_valid_unicode_property, AMPERSAND, ASTERISK,
+        BACKSPACE, CARRIAGE_RETURN, CHARACTER_TABULATION, CIRCUMFLEX_ACCENT, COLON, COMMA,
+        COMMERCIAL_AT, DIGIT_NINE, DIGIT_ONE, DIGIT_ZERO, DOLLAR_SIGN, EQUALS_SIGN,
+        EXCLAMATION_MARK, FORM_FEED, FULL_STOP, GRAVE_ACCENT, GREATER_THAN_SIGN, HYPHEN_MINUS,
+        LATIN_CAPITAL_LETTER_B, LATIN_CAPITAL_LETTER_D, LATIN_CAPITAL_LETTER_P,
+        LATIN_CAPITAL_LETTER_S, LATIN_CAPITAL_LETTER_W, LATIN_SMALL_LETTER_B, LATIN_SMALL_LETTER_C,
+        LATIN_SMALL_LETTER_D, LATIN_SMALL_LETTER_F, LATIN_SMALL_LETTER_G, LATIN_SMALL_LETTER_I,
+        LATIN_SMALL_LETTER_M, LATIN_SMALL_LETTER_N, LATIN_SMALL_LETTER_P, LATIN_SMALL_LETTER_Q,
+        LATIN_SMALL_LETTER_R, LATIN_SMALL_LETTER_S, LATIN_SMALL_LETTER_T, LATIN_SMALL_LETTER_U,
+        LATIN_SMALL_LETTER_V, LATIN_SMALL_LETTER_W, LATIN_SMALL_LETTER_X, LATIN_SMALL_LETTER_Y,
+        LEFT_CURLY_BRACKET, LEFT_PARENTHESIS, LEFT_SQUARE_BRACKET, LESS_THAN_SIGN, LINE_FEED,
+        LINE_TABULATION, LOW_LINE, NUMBER_SIGN, PERCENT_SIGN, PLUS_SIGN, QUESTION_MARK,
+        REVERSE_SOLIDUS, RIGHT_CURLY_BRACKET, RIGHT_PARENTHESIS, RIGHT_SQUARE_BRACKET, SEMICOLON,
+        SOLIDUS, TILDE, VERTICAL_LINE, is_valid_lone_unicode_property, is_valid_lone_unicode_property_of_string,
     },
     EcmaVersion, Reader, RegExpSyntaxError, Wtf16,
 };
@@ -140,8 +140,8 @@ struct UnicodeSetsConsumeResult {
 }
 
 struct UnicodePropertyValueExpressionConsumeResult {
-    pub key: Wtf16,
-    pub value: Option<Wtf16>,
+    pub key: String,
+    pub value: Option<String>,
     pub strings: Option<bool>,
 }
 
@@ -246,8 +246,8 @@ pub trait Options {
         start: usize,
         end: usize,
         kind: CharacterKind,
-        key: &Wtf16,
-        value: Option<&Wtf16>,
+        key: &str,
+        value: Option<&str>,
         negate: bool,
         strings: bool,
     ) {
@@ -635,8 +635,8 @@ impl<'a> RegExpValidator<'a> {
         start: usize,
         end: usize,
         kind: CharacterKind,
-        key: &Wtf16,
-        value: Option<&Wtf16>,
+        key: &str,
+        value: Option<&str>,
         negate: bool,
         strings: bool,
     ) {
@@ -1270,7 +1270,7 @@ impl<'a> RegExpValidator<'a> {
                 Default::default();
             if self.eat(LEFT_CURLY_BRACKET)
                 && {
-                    result = self.eat_unicode_property_value_expression();
+                    result = self.eat_unicode_property_value_expression()?;
                     result.is_some()
                 }
                 && self.eat(RIGHT_CURLY_BRACKET)
@@ -1285,7 +1285,7 @@ impl<'a> RegExpValidator<'a> {
                     self.index(),
                     CharacterKind::Property,
                     &result.key,
-                    result.value.as_ref(),
+                    result.value.as_deref(),
                     negate,
                     result.strings.unwrap_or_default(),
                 );
@@ -1795,8 +1795,72 @@ impl<'a> RegExpValidator<'a> {
     }
 
     fn eat_unicode_property_value_expression(
-        &self,
-    ) -> Option<UnicodePropertyValueExpressionConsumeResult> {
+        &mut self,
+    ) -> Result<Option<UnicodePropertyValueExpressionConsumeResult>, RegExpSyntaxError> {
+        let start = self.index();
+
+        if self.eat_unicode_property_name() && self.eat(EQUALS_SIGN) {
+            let key: String = (&self._last_str_value).try_into().unwrap();
+            if self.eat_unicode_property_value() {
+                let value: String = (&self._last_str_value).try_into().unwrap();
+                if is_valid_unicode_property(self.ecma_version(), &key, &value) {
+                    return Ok(Some(UnicodePropertyValueExpressionConsumeResult {
+                        key,
+                        value: Some(value.clone()),
+                        strings: None,
+                    }));
+                }
+                self.raise("Invalid property name", None)?;
+            }
+        }
+        self.rewind(start);
+
+        if self.eat_lone_unicode_property_name_or_value() {
+            let name_or_value: String = (&self._last_str_value).try_into().unwrap();
+            if is_valid_unicode_property(self.ecma_version(), "General_Category", &name_or_value) {
+                return Ok(Some(UnicodePropertyValueExpressionConsumeResult {
+                    key: "General_Category".to_owned(),
+                    value: Some(name_or_value),
+                    strings: None,
+                }));
+            }
+            if is_valid_unicode_property(self.ecma_version(), "General_Category", &name_or_value) {
+                return Ok(Some(UnicodePropertyValueExpressionConsumeResult {
+                    key: "General_Category".to_owned(),
+                    value: Some(name_or_value),
+                    strings: None,
+                }));
+            }
+            if is_valid_lone_unicode_property(self.ecma_version(), &name_or_value) {
+                return Ok(Some(UnicodePropertyValueExpressionConsumeResult {
+                    key: name_or_value,
+                    value: None,
+                    strings: None,
+                }));
+            }
+            if self._unicode_sets_mode
+                && is_valid_lone_unicode_property_of_string(self.ecma_version(), &name_or_value)
+            {
+                return Ok(Some(UnicodePropertyValueExpressionConsumeResult {
+                    key: name_or_value,
+                    value: None,
+                    strings: Some(true),
+                }));
+            }
+            self.raise("Invalid property name", None)?;
+        }
+        Ok(None)
+    }
+
+    fn eat_unicode_property_name(&self) -> bool {
+        unimplemented!()
+    }
+
+    fn eat_unicode_property_value(&self) -> bool {
+        unimplemented!()
+    }
+
+    fn eat_lone_unicode_property_name_or_value(&self) -> bool {
         unimplemented!()
     }
 

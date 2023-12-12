@@ -432,8 +432,8 @@ impl<'a> validator::Options for RegExpParserState<'a> {
         start: usize,
         end: usize,
         kind: CharacterKind,
-        key: &Wtf16,
-        value: Option<&Wtf16>,
+        key: &str,
+        value: Option<&str>,
         negate: bool,
         strings: bool,
     ) {
@@ -460,8 +460,8 @@ impl<'a> validator::Options for RegExpParserState<'a> {
             self.source()[start..end].into(),
             kind,
             Some(strings),
-            Some(key.clone()),
-            value.cloned(),
+            Some(key.into()),
+            value.map(Into::into),
             Some(negate),
         ));
         match &mut *self._arena.node_mut(parent) {
@@ -565,14 +565,15 @@ impl<'a> validator::Options for RegExpParserState<'a> {
             .is_empty());
         self._expression_buffer_map.borrow_mut().remove(&node);
 
-        let new_node = self._arena.alloc_node(Node::new_expression_character_class(
+        let new_node = Node::new_expression_character_class(
             Some(parent),
             self._arena.node(node).start(),
             self._arena.node(node).end(),
             self._arena.node(node).raw().into(),
             self._arena.node(node).as_character_class().negate,
             expression,
-        ));
+        );
+        let new_node = self._arena.alloc_node(new_node);
         self._arena.node_mut(expression).set_parent(Some(new_node));
         assert!(
             Some(node)
