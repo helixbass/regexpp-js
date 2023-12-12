@@ -144,7 +144,7 @@ mod tests {
 
         let mut chars = source.split_code_points().collect_vec();
 
-        if chars[0] != vec![bmp_char_to_utf_16('/')].into() {
+        if chars.get(0) != Some(&vec![bmp_char_to_utf_16('/')].into()) {
             return None;
         }
         chars.remove(0);
