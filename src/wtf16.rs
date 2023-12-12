@@ -4,7 +4,7 @@ use serde::{Deserialize, Deserializer};
 use serde_bytes::ByteBuf;
 use wtf8::Wtf8;
 
-use crate::CodePoint;
+use crate::{unicode::{is_lead_surrogate, is_trail_surrogate}, CodePoint};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Hash)]
 pub struct Wtf16(Vec<u16>);
@@ -72,7 +72,8 @@ impl From<CodePoint> for Wtf16 {
                 buffer
             } else {
                 vec![u16::try_from(value).unwrap()]
-            }.into()
+            }
+            .into(),
         )
     }
 }
@@ -107,11 +108,19 @@ impl<'a> Iterator for SplitCodePoints<'a> {
             return None;
         }
         let next_unit = self.original[self.next_index];
-        self.next_index += 1;
-        if !is_surrogate_code_point(next_unit) {
-            return Some(vec![next_unit].into());
+        if is_lead_surrogate(next_unit.into()) {
+            if let Some(second_unit) = self
+                .original
+                .get(self.next_index + 1)
+                .copied()
+                .filter(|&second_unit| is_trail_surrogate(second_unit.into()))
+            {
+                self.next_index += 2;
+                return Some(vec![next_unit, second_unit].into());
+            }
         }
-        unimplemented!()
+        self.next_index += 1;
+        Some(vec![next_unit].into())
     }
 }
 
