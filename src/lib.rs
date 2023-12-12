@@ -37,7 +37,9 @@ mod tests {
     use std::{collections::HashMap, rc::Rc};
 
     use itertools::Itertools;
+    use regex::Captures;
     use speculoos::prelude::*;
+    use squalid::regex;
 
     use super::*;
 
@@ -94,7 +96,7 @@ mod tests {
                         let mut validator = RegExpValidator::new(Some(Rc::new(options)));
                         if let Some(extracted) = extract_pattern_and_flags(&source, &mut validator)
                         {
-                            let err = validator
+                            let error = validator
                                 .validate_pattern(
                                     &extracted.pattern,
                                     None,
@@ -109,7 +111,18 @@ mod tests {
                                     }),
                                 )
                                 .unwrap_err();
-                            unimplemented!()
+                            let expected_message = regex!(r#"/([a-z]+?):"#).replace(
+                                &expected.message,
+                                |captures: &Captures| {
+                                    format!(
+                                        "/{}:",
+                                        regex!(r#"[^uv]"#).replace_all(&captures[1], "")
+                                    )
+                                }
+                            ).into_owned();
+                            let expected_index = expected.index - 1;
+                            assert_that!(&error.message).is_equal_to(&expected_message);
+                            assert_that!(&error.index).is_equal_to(expected_index);
                         }
                     }
                 }

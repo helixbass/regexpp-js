@@ -890,7 +890,6 @@ fn get_relative_path(
     let to_path = &path_map[&to];
     let relative = diff_paths(to_path, from_path).unwrap();
     let relative = relative.to_str().unwrap();
-    println!("get_relative_path() from_path: {:#?}, to_path: {:#?}, relative: {:#?}", from_path, to_path, relative);
     format!("♻️{}", relative.strip_suffix('/').unwrap_or(relative),)
 }
 

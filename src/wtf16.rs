@@ -107,6 +107,7 @@ impl<'a> Iterator for SplitCodePoints<'a> {
             return None;
         }
         let next_unit = self.original[self.next_index];
+        self.next_index += 1;
         if !is_surrogate_code_point(next_unit) {
             return Some(vec![next_unit].into());
         }
