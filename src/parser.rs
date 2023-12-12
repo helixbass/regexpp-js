@@ -420,11 +420,11 @@ impl<'a> validator::Options for RegExpParserState<'a> {
             None,
             Some(negate),
         ));
-        self._arena
-            .node_mut(parent)
-            .as_alternative_mut()
-            .elements
-            .push(node);
+        match &mut *self._arena.node_mut(parent) {
+            Node::Alternative(parent) => parent.elements.push(node),
+            Node::CharacterClass(parent) => parent.elements.push(node),
+            _ => unreachable!(),
+        }
     }
 
     fn on_unicode_property_character_set(
