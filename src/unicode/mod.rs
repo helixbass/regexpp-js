@@ -81,6 +81,9 @@ pub const ZERO_WIDTH_JOINER: CodePoint = 0x200d;
 pub const LINE_SEPARATOR: CodePoint = 0x2028;
 pub const PARAGRAPH_SEPARATOR: CodePoint = 0x2029;
 
+pub const MIN_CODE_POINT: CodePoint = 0x00;
+pub const MAX_CODE_POINT: CodePoint = 0x10ffff;
+
 pub fn is_latin_letter(code: CodePoint) -> bool {
     code >= LATIN_CAPITAL_LETTER_A && code <= LATIN_CAPITAL_LETTER_Z
         || code >= LATIN_SMALL_LETTER_A && code <= LATIN_SMALL_LETTER_Z
@@ -105,6 +108,10 @@ pub fn is_line_terminator(code: CodePoint) -> bool {
         code,
         LINE_FEED | CARRIAGE_RETURN | LINE_SEPARATOR | PARAGRAPH_SEPARATOR
     )
+}
+
+pub fn is_valid_unicode(code: CodePoint) -> bool {
+    /*code >= MIN_CODE_POINT &&*/ code <= MAX_CODE_POINT
 }
 
 pub fn digit_to_int(code: CodePoint) -> CodePoint {

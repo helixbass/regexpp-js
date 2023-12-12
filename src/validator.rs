@@ -10,23 +10,24 @@ use crate::{
     reader::CodePoint,
     regexp_syntax_error::{self, new_reg_exp_syntax_error},
     unicode::{
-        combine_surrogate_pair, digit_to_int, is_decimal_digit, is_id_continue, is_id_start,
-        is_latin_letter, is_lead_surrogate, is_line_terminator, is_octal_digit, is_trail_surrogate,
-        is_valid_lone_unicode_property, is_valid_lone_unicode_property_of_string,
-        is_valid_unicode_property, AMPERSAND, ASTERISK, BACKSPACE, CARRIAGE_RETURN,
-        CHARACTER_TABULATION, CIRCUMFLEX_ACCENT, COLON, COMMA, COMMERCIAL_AT, DIGIT_NINE,
-        DIGIT_ONE, DIGIT_ZERO, DOLLAR_SIGN, EQUALS_SIGN, EXCLAMATION_MARK, FORM_FEED, FULL_STOP,
-        GRAVE_ACCENT, GREATER_THAN_SIGN, HYPHEN_MINUS, LATIN_CAPITAL_LETTER_B,
-        LATIN_CAPITAL_LETTER_D, LATIN_CAPITAL_LETTER_P, LATIN_CAPITAL_LETTER_S,
-        LATIN_CAPITAL_LETTER_W, LATIN_SMALL_LETTER_B, LATIN_SMALL_LETTER_C, LATIN_SMALL_LETTER_D,
-        LATIN_SMALL_LETTER_F, LATIN_SMALL_LETTER_G, LATIN_SMALL_LETTER_I, LATIN_SMALL_LETTER_K,
-        LATIN_SMALL_LETTER_M, LATIN_SMALL_LETTER_N, LATIN_SMALL_LETTER_P, LATIN_SMALL_LETTER_Q,
-        LATIN_SMALL_LETTER_R, LATIN_SMALL_LETTER_S, LATIN_SMALL_LETTER_T, LATIN_SMALL_LETTER_U,
-        LATIN_SMALL_LETTER_V, LATIN_SMALL_LETTER_W, LATIN_SMALL_LETTER_X, LATIN_SMALL_LETTER_Y,
-        LEFT_CURLY_BRACKET, LEFT_PARENTHESIS, LEFT_SQUARE_BRACKET, LESS_THAN_SIGN, LINE_FEED,
-        LINE_TABULATION, LOW_LINE, NUMBER_SIGN, PERCENT_SIGN, PLUS_SIGN, QUESTION_MARK,
-        REVERSE_SOLIDUS, RIGHT_CURLY_BRACKET, RIGHT_PARENTHESIS, RIGHT_SQUARE_BRACKET, SEMICOLON,
-        SOLIDUS, TILDE, VERTICAL_LINE, ZERO_WIDTH_JOINER, ZERO_WIDTH_NON_JOINER, is_hex_digit,
+        combine_surrogate_pair, digit_to_int, is_decimal_digit, is_hex_digit, is_id_continue,
+        is_id_start, is_latin_letter, is_lead_surrogate, is_line_terminator, is_octal_digit,
+        is_trail_surrogate, is_valid_lone_unicode_property,
+        is_valid_lone_unicode_property_of_string, is_valid_unicode_property, AMPERSAND, ASTERISK,
+        BACKSPACE, CARRIAGE_RETURN, CHARACTER_TABULATION, CIRCUMFLEX_ACCENT, COLON, COMMA,
+        COMMERCIAL_AT, DIGIT_NINE, DIGIT_ONE, DIGIT_ZERO, DOLLAR_SIGN, EQUALS_SIGN,
+        EXCLAMATION_MARK, FORM_FEED, FULL_STOP, GRAVE_ACCENT, GREATER_THAN_SIGN, HYPHEN_MINUS,
+        LATIN_CAPITAL_LETTER_B, LATIN_CAPITAL_LETTER_D, LATIN_CAPITAL_LETTER_P,
+        LATIN_CAPITAL_LETTER_S, LATIN_CAPITAL_LETTER_W, LATIN_SMALL_LETTER_B, LATIN_SMALL_LETTER_C,
+        LATIN_SMALL_LETTER_D, LATIN_SMALL_LETTER_F, LATIN_SMALL_LETTER_G, LATIN_SMALL_LETTER_I,
+        LATIN_SMALL_LETTER_K, LATIN_SMALL_LETTER_M, LATIN_SMALL_LETTER_N, LATIN_SMALL_LETTER_P,
+        LATIN_SMALL_LETTER_Q, LATIN_SMALL_LETTER_R, LATIN_SMALL_LETTER_S, LATIN_SMALL_LETTER_T,
+        LATIN_SMALL_LETTER_U, LATIN_SMALL_LETTER_V, LATIN_SMALL_LETTER_W, LATIN_SMALL_LETTER_X,
+        LATIN_SMALL_LETTER_Y, LEFT_CURLY_BRACKET, LEFT_PARENTHESIS, LEFT_SQUARE_BRACKET,
+        LESS_THAN_SIGN, LINE_FEED, LINE_TABULATION, LOW_LINE, NUMBER_SIGN, PERCENT_SIGN, PLUS_SIGN,
+        QUESTION_MARK, REVERSE_SOLIDUS, RIGHT_CURLY_BRACKET, RIGHT_PARENTHESIS,
+        RIGHT_SQUARE_BRACKET, SEMICOLON, SOLIDUS, TILDE, VERTICAL_LINE, ZERO_WIDTH_JOINER,
+        ZERO_WIDTH_NON_JOINER, is_valid_unicode,
     },
     EcmaVersion, Reader, RegExpSyntaxError, Wtf16,
 };
@@ -1895,10 +1896,11 @@ impl<'a> RegExpValidator<'a> {
 
         if self.eat_fixed_hex_digits(4) {
             let lead = self._last_int_value.unwrap();
-            if is_lead_surrogate(lead) &&
-                self.eat(REVERSE_SOLIDUS) &&
-                self.eat(LATIN_SMALL_LETTER_U) &&
-                self.eat_fixed_hex_digits(4) {
+            if is_lead_surrogate(lead)
+                && self.eat(REVERSE_SOLIDUS)
+                && self.eat(LATIN_SMALL_LETTER_U)
+                && self.eat_fixed_hex_digits(4)
+            {
                 let trail = self._last_int_value.unwrap();
                 if is_trail_surrogate(trail) {
                     self._last_int_value = Some(combine_surrogate_pair(lead, trail));
@@ -1912,8 +1914,19 @@ impl<'a> RegExpValidator<'a> {
         false
     }
 
-    fn eat_reg_exp_unicode_code_point_escape(&self) -> bool {
-        unimplemented!()
+    fn eat_reg_exp_unicode_code_point_escape(&mut self) -> bool {
+        let start = self.index();
+
+        if self.eat(LEFT_CURLY_BRACKET)
+            && self.eat_hex_digits()
+            && self.eat(RIGHT_CURLY_BRACKET)
+            && is_valid_unicode(self._last_int_value.unwrap())
+        {
+            return true;
+        }
+
+        self.rewind(start);
+        false
     }
 
     fn eat_identity_escape(&mut self) -> bool {
@@ -2079,6 +2092,20 @@ impl<'a> RegExpValidator<'a> {
         self.index() != start
     }
 
+    fn eat_hex_digits(&mut self) -> bool {
+        let start = self.index();
+        self._last_int_value = Some(0);
+        while let Some(current_code_point) = self
+            .current_code_point()
+            .filter(|&current_code_point| is_hex_digit(current_code_point))
+        {
+            self._last_int_value =
+                Some(16 * self._last_int_value.unwrap() + digit_to_int(current_code_point));
+            self.advance();
+        }
+        self.index() != start
+    }
+
     fn eat_legacy_octal_escape_sequence(&mut self) -> bool {
         if self.eat_octal_digit() {
             let n1 = self._last_int_value.unwrap();
@@ -2111,9 +2138,7 @@ impl<'a> RegExpValidator<'a> {
         let start = self.index();
         self._last_int_value = Some(0);
         for _ in 0..length {
-            let Some(cp) = self.current_code_point().filter(|&cp| {
-                is_hex_digit(cp)
-            }) else {
+            let Some(cp) = self.current_code_point().filter(|&cp| is_hex_digit(cp)) else {
                 self.rewind(start);
                 return false;
             };
