@@ -1,5 +1,6 @@
-use std::{cell::{RefCell, Ref}, collections::HashMap, rc::Rc};
+use std::{collections::HashMap, rc::Rc};
 
+use debug_cell::{RefCell, Ref};
 use id_arena::Id;
 use serde::Deserialize;
 use squalid::EverythingExt;

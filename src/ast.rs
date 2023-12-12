@@ -885,7 +885,7 @@ fn get_relative_path(
 ) -> String {
     let from_path = &path_map[&from];
     let to_path = &path_map[&to];
-    let relative = diff_paths(from_path, to_path).unwrap();
+    let relative = diff_paths(to_path, from_path).unwrap();
     let relative = relative.to_str().unwrap();
     format!("♻️{}", relative.strip_suffix('/').unwrap_or(relative),)
 }
