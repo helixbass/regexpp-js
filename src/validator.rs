@@ -218,6 +218,12 @@ impl From<usize> for CapturingGroupKey {
     }
 }
 
+impl From<Wtf16> for CapturingGroupKey {
+    fn from(value: Wtf16) -> Self {
+        Self::Name(value)
+    }
+}
+
 pub trait Options {
     fn strict(&self) -> Option<bool>;
     fn ecma_version(&self) -> Option<EcmaVersion>;
@@ -1212,7 +1218,7 @@ impl<'a> RegExpValidator<'a> {
         if self.consume_backreference()?
             || self.consume_character_class_escape()?.is_some()
             || self.consume_character_escape()?
-            || self._n_flag && self.consume_k_group_name()
+            || self._n_flag && self.consume_k_group_name()?
         {
             return Ok(true);
         }
@@ -1339,8 +1345,22 @@ impl<'a> RegExpValidator<'a> {
         Ok(false)
     }
 
-    fn consume_k_group_name(&self) -> bool {
-        unimplemented!()
+    fn consume_k_group_name(&mut self) -> Result<bool, RegExpSyntaxError> {
+        let start = self.index();
+        if self.eat(LATIN_SMALL_LETTER_K) {
+            if self.eat_group_name()? {
+                let group_name = &self._last_str_value;
+                self._backreference_names.insert(group_name.clone());
+                self.on_backreference(
+                    start - 1,
+                    self.index(),
+                    &group_name.clone().into(),
+                );
+                return Ok(true);
+            }
+            self.raise("Invalid named reference", None)?;
+        }
+        Ok(false)
     }
 
     fn consume_character_class(
