@@ -1921,10 +1921,10 @@ impl<'a> RegExpValidator<'a> {
     fn eat_decimal_escape(&mut self) -> bool {
         self._last_int_value = Some(0);
         let mut cp = self.current_code_point();
-        if let Some(cp_present) = cp.filter(|&cp| cp >= DIGIT_ONE && cp <= DIGIT_NINE) {
+        if cp.matches(|cp| cp >= DIGIT_ONE && cp <= DIGIT_NINE) {
             while {
                 self._last_int_value =
-                    Some(10 * self._last_int_value.unwrap() + (cp_present - DIGIT_ZERO));
+                    Some(10 * self._last_int_value.unwrap() + (cp.unwrap() - DIGIT_ZERO));
                 self.advance();
                 cp = self.current_code_point();
                 matches!(
