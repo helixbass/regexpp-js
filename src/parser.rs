@@ -431,8 +431,8 @@ impl<'a> validator::Options for RegExpParserState<'a> {
         start: usize,
         end: usize,
         kind: CharacterKind,
-        key: &[u16],
-        value: Option<&[u16]>,
+        key: &Wtf16,
+        value: Option<&Wtf16>,
         negate: bool,
         strings: bool,
     ) {
@@ -459,8 +459,8 @@ impl<'a> validator::Options for RegExpParserState<'a> {
             self.source()[start..end].into(),
             kind,
             Some(strings),
-            Some(key.into()),
-            value.map(Into::into),
+            Some(key.clone()),
+            value.cloned(),
             Some(negate),
         ));
         match &mut *self._arena.node_mut(parent) {

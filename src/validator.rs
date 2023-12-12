@@ -11,14 +11,16 @@ use crate::{
     regexp_syntax_error::{self, new_reg_exp_syntax_error},
     unicode::{
         is_line_terminator, AMPERSAND, ASTERISK, BACKSPACE, CIRCUMFLEX_ACCENT, COLON, COMMA,
-        COMMERCIAL_AT, DOLLAR_SIGN, EQUALS_SIGN, EXCLAMATION_MARK, FULL_STOP, GRAVE_ACCENT,
-        GREATER_THAN_SIGN, HYPHEN_MINUS, LATIN_CAPITAL_LETTER_B, LATIN_SMALL_LETTER_B,
-        LATIN_SMALL_LETTER_C, LATIN_SMALL_LETTER_D, LATIN_SMALL_LETTER_G, LATIN_SMALL_LETTER_I,
-        LATIN_SMALL_LETTER_M, LATIN_SMALL_LETTER_Q, LATIN_SMALL_LETTER_S, LATIN_SMALL_LETTER_U,
-        LATIN_SMALL_LETTER_V, LATIN_SMALL_LETTER_Y, LEFT_CURLY_BRACKET, LEFT_PARENTHESIS,
-        LEFT_SQUARE_BRACKET, LESS_THAN_SIGN, NUMBER_SIGN, PERCENT_SIGN, PLUS_SIGN, QUESTION_MARK,
-        REVERSE_SOLIDUS, RIGHT_CURLY_BRACKET, RIGHT_PARENTHESIS, RIGHT_SQUARE_BRACKET, SEMICOLON,
-        SOLIDUS, TILDE, VERTICAL_LINE,
+        COMMERCIAL_AT, DIGIT_NINE, DIGIT_ONE, DIGIT_ZERO, DOLLAR_SIGN, EQUALS_SIGN,
+        EXCLAMATION_MARK, FULL_STOP, GRAVE_ACCENT, GREATER_THAN_SIGN, HYPHEN_MINUS,
+        LATIN_CAPITAL_LETTER_B, LATIN_CAPITAL_LETTER_D, LATIN_CAPITAL_LETTER_P,
+        LATIN_CAPITAL_LETTER_S, LATIN_CAPITAL_LETTER_W, LATIN_SMALL_LETTER_B, LATIN_SMALL_LETTER_C,
+        LATIN_SMALL_LETTER_D, LATIN_SMALL_LETTER_G, LATIN_SMALL_LETTER_I, LATIN_SMALL_LETTER_M,
+        LATIN_SMALL_LETTER_P, LATIN_SMALL_LETTER_Q, LATIN_SMALL_LETTER_S, LATIN_SMALL_LETTER_U,
+        LATIN_SMALL_LETTER_V, LATIN_SMALL_LETTER_W, LATIN_SMALL_LETTER_Y, LEFT_CURLY_BRACKET,
+        LEFT_PARENTHESIS, LEFT_SQUARE_BRACKET, LESS_THAN_SIGN, NUMBER_SIGN, PERCENT_SIGN,
+        PLUS_SIGN, QUESTION_MARK, REVERSE_SOLIDUS, RIGHT_CURLY_BRACKET, RIGHT_PARENTHESIS,
+        RIGHT_SQUARE_BRACKET, SEMICOLON, SOLIDUS, TILDE, VERTICAL_LINE,
     },
     EcmaVersion, Reader, RegExpSyntaxError, Wtf16,
 };
@@ -126,7 +128,13 @@ fn is_class_set_reserved_punctuator(cp: Option<CodePoint>) -> bool {
 
 #[derive(Copy, Clone, Default)]
 struct UnicodeSetsConsumeResult {
-    may_contain_strings: Option<bool>,
+    pub may_contain_strings: Option<bool>,
+}
+
+struct UnicodePropertyValueExpressionConsumeResult {
+    pub key: Wtf16,
+    pub value: Option<Wtf16>,
+    pub strings: Option<bool>,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -230,8 +238,8 @@ pub trait Options {
         start: usize,
         end: usize,
         kind: CharacterKind,
-        key: &[u16],
-        value: Option<&[u16]>,
+        key: &Wtf16,
+        value: Option<&Wtf16>,
         negate: bool,
         strings: bool,
     ) {
@@ -537,6 +545,14 @@ impl<'a> RegExpValidator<'a> {
         self._options.on_alternative_leave(start, end, index);
     }
 
+    fn on_group_enter(&mut self, start: usize) {
+        self._options.on_group_enter(start);
+    }
+
+    fn on_group_leave(&mut self, start: usize, end: usize) {
+        self._options.on_group_leave(start, end);
+    }
+
     fn on_lookaround_assertion_enter(&mut self, start: usize, kind: AssertionKind, negate: bool) {
         self._options
             .on_lookaround_assertion_enter(start, kind, negate);
@@ -570,6 +586,31 @@ impl<'a> RegExpValidator<'a> {
 
     fn on_any_character_set(&mut self, start: usize, end: usize, kind: CharacterKind) {
         self._options.on_any_character_set(start, end, kind);
+    }
+
+    fn on_escape_character_set(
+        &mut self,
+        start: usize,
+        end: usize,
+        kind: CharacterKind,
+        negate: bool,
+    ) {
+        self._options
+            .on_escape_character_set(start, end, kind, negate);
+    }
+
+    fn on_unicode_property_character_set(
+        &mut self,
+        start: usize,
+        end: usize,
+        kind: CharacterKind,
+        key: &Wtf16,
+        value: Option<&Wtf16>,
+        negate: bool,
+        strings: bool,
+    ) {
+        self._options
+            .on_unicode_property_character_set(start, end, kind, key, value, negate, strings);
     }
 
     fn on_character(&mut self, start: usize, end: usize, value: CodePoint) {
@@ -916,7 +957,7 @@ impl<'a> RegExpValidator<'a> {
             || self.consume_dot()
             || self.consume_reverse_solidus_atom_escape()?
             || self.consume_character_class()?.is_some()
-            || self.consume_uncapturing_group()
+            || self.consume_uncapturing_group()?
             || self.consume_capturing_group())
     }
 
@@ -939,8 +980,18 @@ impl<'a> RegExpValidator<'a> {
         Ok(false)
     }
 
-    fn consume_uncapturing_group(&self) -> bool {
-        unimplemented!()
+    fn consume_uncapturing_group(&mut self) -> Result<bool, RegExpSyntaxError> {
+        let start = self.index();
+        if self.eat3(LEFT_PARENTHESIS, QUESTION_MARK, COLON) {
+            self.on_group_enter(start);
+            self.consume_disjunction()?;
+            if !self.eat(RIGHT_PARENTHESIS) {
+                self.raise("Unterminated group", None)?;
+            }
+            self.on_group_leave(start, self.index());
+            return Ok(true);
+        }
+        Ok(false)
     }
 
     fn consume_capturing_group(&self) -> bool {
@@ -948,29 +999,24 @@ impl<'a> RegExpValidator<'a> {
     }
 
     fn consume_extended_atom(&mut self) -> Result<bool, RegExpSyntaxError> {
-        Ok(self.consume_dot() ||
-            self.consume_reverse_solidus_atom_escape()? ||
-            self.consume_reverse_solidus_followed_by_c() ||
-            self.consume_character_class()?.is_some() ||
-            self.consume_uncapturing_group() ||
-            self.consume_capturing_group() ||
-            self.consume_invalid_braced_quantifier() ||
-            self.consume_extended_pattern_character()
-        )
-
+        Ok(self.consume_dot()
+            || self.consume_reverse_solidus_atom_escape()?
+            || self.consume_reverse_solidus_followed_by_c()
+            || self.consume_character_class()?.is_some()
+            || self.consume_uncapturing_group()?
+            || self.consume_capturing_group()
+            || self.consume_invalid_braced_quantifier()
+            || self.consume_extended_pattern_character())
     }
 
     fn consume_reverse_solidus_followed_by_c(&mut self) -> bool {
         let start = self.index();
-        if self.current_code_point() == Some(REVERSE_SOLIDUS) &&
-            self.next_code_point() == Some(LATIN_SMALL_LETTER_C) {
+        if self.current_code_point() == Some(REVERSE_SOLIDUS)
+            && self.next_code_point() == Some(LATIN_SMALL_LETTER_C)
+        {
             self._last_int_value = self.current_code_point();
             self.advance();
-            self.on_character(
-                start,
-                self.index(),
-                REVERSE_SOLIDUS,
-            );
+            self.on_character(start, self.index(), REVERSE_SOLIDUS);
             return true;
         }
         false
@@ -996,10 +1042,11 @@ impl<'a> RegExpValidator<'a> {
     }
 
     fn consume_atom_escape(&mut self) -> Result<bool, RegExpSyntaxError> {
-        if self.consume_backreference()? ||
-            self.consume_character_class_escape().is_some() ||
-            self.consume_character_escape() ||
-            self._n_flag && self.consume_k_group_name() {
+        if self.consume_backreference()?
+            || self.consume_character_class_escape()?.is_some()
+            || self.consume_character_escape()
+            || self._n_flag && self.consume_k_group_name()
+        {
             return Ok(true);
         }
         if self.strict() || self._unicode_mode {
@@ -1024,8 +1071,89 @@ impl<'a> RegExpValidator<'a> {
         Ok(false)
     }
 
-    fn consume_character_class_escape(&self) -> Option<UnicodeSetsConsumeResult> {
-        unimplemented!()
+    fn consume_character_class_escape(
+        &mut self,
+    ) -> Result<Option<UnicodeSetsConsumeResult>, RegExpSyntaxError> {
+        let start = self.index();
+
+        if self.eat(LATIN_SMALL_LETTER_D) {
+            self._last_int_value = None;
+            self.on_escape_character_set(start - 1, self.index(), CharacterKind::Digit, false);
+
+            return Ok(Some(Default::default()));
+        }
+        if self.eat(LATIN_CAPITAL_LETTER_D) {
+            self._last_int_value = None;
+            self.on_escape_character_set(start - 1, self.index(), CharacterKind::Digit, true);
+
+            return Ok(Some(Default::default()));
+        }
+        if self.eat(LATIN_SMALL_LETTER_S) {
+            self._last_int_value = None;
+            self.on_escape_character_set(start - 1, self.index(), CharacterKind::Space, false);
+
+            return Ok(Some(Default::default()));
+        }
+        if self.eat(LATIN_CAPITAL_LETTER_S) {
+            self._last_int_value = None;
+            self.on_escape_character_set(start - 1, self.index(), CharacterKind::Space, true);
+
+            return Ok(Some(Default::default()));
+        }
+        if self.eat(LATIN_SMALL_LETTER_W) {
+            self._last_int_value = None;
+            self.on_escape_character_set(start - 1, self.index(), CharacterKind::Word, false);
+
+            return Ok(Some(Default::default()));
+        }
+        if self.eat(LATIN_CAPITAL_LETTER_W) {
+            self._last_int_value = None;
+            self.on_escape_character_set(start - 1, self.index(), CharacterKind::Word, true);
+
+            return Ok(Some(Default::default()));
+        }
+
+        let mut negate = false;
+        if self._unicode_mode
+            && self.ecma_version() >= EcmaVersion::_2018
+            && (self.eat(LATIN_SMALL_LETTER_P) || {
+                negate = self.eat(LATIN_CAPITAL_LETTER_P);
+                negate
+            })
+        {
+            self._last_int_value = None;
+            let mut result: Option<UnicodePropertyValueExpressionConsumeResult> =
+                Default::default();
+            if self.eat(LEFT_CURLY_BRACKET)
+                && {
+                    result = self.eat_unicode_property_value_expression();
+                    result.is_some()
+                }
+                && self.eat(RIGHT_CURLY_BRACKET)
+            {
+                let result = result.unwrap();
+                if negate && result.strings == Some(true) {
+                    self.raise("Invalid property name", None)?;
+                }
+
+                self.on_unicode_property_character_set(
+                    start - 1,
+                    self.index(),
+                    CharacterKind::Property,
+                    &result.key,
+                    result.value.as_ref(),
+                    negate,
+                    result.strings.unwrap_or_default(),
+                );
+
+                return Ok(Some(UnicodeSetsConsumeResult {
+                    may_contain_strings: result.strings,
+                }));
+            }
+            self.raise("Invalid property name", None)?;
+        }
+
+        Ok(None)
     }
 
     fn consume_character_escape(&self) -> bool {
@@ -1296,7 +1424,7 @@ impl<'a> RegExpValidator<'a> {
             return Ok(Some(result));
         }
         if self.eat(REVERSE_SOLIDUS) {
-            let result = self.consume_character_class_escape();
+            let result = self.consume_character_class_escape()?;
             if let Some(result) = result {
                 return Ok(Some(result));
             }
@@ -1369,7 +1497,28 @@ impl<'a> RegExpValidator<'a> {
         false
     }
 
-    fn eat_decimal_escape(&self) -> bool {
+    fn eat_decimal_escape(&mut self) -> bool {
+        self._last_int_value = Some(0);
+        let mut cp = self.current_code_point();
+        if let Some(cp_present) = cp.filter(|&cp| cp >= DIGIT_ONE && cp <= DIGIT_NINE) {
+            while {
+                self._last_int_value =
+                    Some(10 * self._last_int_value.unwrap() + (cp_present - DIGIT_ZERO));
+                self.advance();
+                cp = self.current_code_point();
+                matches!(
+                    cp,
+                    Some(cp) if cp >= DIGIT_ZERO && cp <= DIGIT_NINE
+                )
+            } {}
+            return true;
+        }
+        false
+    }
+
+    fn eat_unicode_property_value_expression(
+        &self,
+    ) -> Option<UnicodePropertyValueExpressionConsumeResult> {
         unimplemented!()
     }
 }
