@@ -1,4 +1,4 @@
-use std::{collections::HashSet, rc::Rc, ops::Range};
+use std::{collections::HashSet, ops::Range, rc::Rc};
 
 use derive_builder::Builder;
 use once_cell::sync::Lazy;
@@ -10,17 +10,19 @@ use crate::{
     reader::CodePoint,
     regexp_syntax_error::{self, new_reg_exp_syntax_error},
     unicode::{
-        is_line_terminator, AMPERSAND, ASTERISK, BACKSPACE, CIRCUMFLEX_ACCENT, COLON, COMMA,
-        COMMERCIAL_AT, DIGIT_NINE, DIGIT_ONE, DIGIT_ZERO, DOLLAR_SIGN, EQUALS_SIGN,
-        EXCLAMATION_MARK, FULL_STOP, GRAVE_ACCENT, GREATER_THAN_SIGN, HYPHEN_MINUS,
-        LATIN_CAPITAL_LETTER_B, LATIN_CAPITAL_LETTER_D, LATIN_CAPITAL_LETTER_P,
-        LATIN_CAPITAL_LETTER_S, LATIN_CAPITAL_LETTER_W, LATIN_SMALL_LETTER_B, LATIN_SMALL_LETTER_C,
-        LATIN_SMALL_LETTER_D, LATIN_SMALL_LETTER_G, LATIN_SMALL_LETTER_I, LATIN_SMALL_LETTER_M,
-        LATIN_SMALL_LETTER_P, LATIN_SMALL_LETTER_Q, LATIN_SMALL_LETTER_S, LATIN_SMALL_LETTER_U,
-        LATIN_SMALL_LETTER_V, LATIN_SMALL_LETTER_W, LATIN_SMALL_LETTER_Y, LEFT_CURLY_BRACKET,
-        LEFT_PARENTHESIS, LEFT_SQUARE_BRACKET, LESS_THAN_SIGN, NUMBER_SIGN, PERCENT_SIGN,
+        digit_to_int, is_decimal_digit, is_line_terminator, AMPERSAND, ASTERISK, BACKSPACE,
+        CARRIAGE_RETURN, CHARACTER_TABULATION, CIRCUMFLEX_ACCENT, COLON, COMMA, COMMERCIAL_AT,
+        DIGIT_NINE, DIGIT_ONE, DIGIT_ZERO, DOLLAR_SIGN, EQUALS_SIGN, EXCLAMATION_MARK, FORM_FEED,
+        FULL_STOP, GRAVE_ACCENT, GREATER_THAN_SIGN, HYPHEN_MINUS, LATIN_CAPITAL_LETTER_B,
+        LATIN_CAPITAL_LETTER_D, LATIN_CAPITAL_LETTER_P, LATIN_CAPITAL_LETTER_S,
+        LATIN_CAPITAL_LETTER_W, LATIN_SMALL_LETTER_B, LATIN_SMALL_LETTER_C, LATIN_SMALL_LETTER_D,
+        LATIN_SMALL_LETTER_F, LATIN_SMALL_LETTER_G, LATIN_SMALL_LETTER_I, LATIN_SMALL_LETTER_M,
+        LATIN_SMALL_LETTER_N, LATIN_SMALL_LETTER_P, LATIN_SMALL_LETTER_Q, LATIN_SMALL_LETTER_R,
+        LATIN_SMALL_LETTER_S, LATIN_SMALL_LETTER_T, LATIN_SMALL_LETTER_U, LATIN_SMALL_LETTER_V,
+        LATIN_SMALL_LETTER_W, LATIN_SMALL_LETTER_Y, LEFT_CURLY_BRACKET, LEFT_PARENTHESIS,
+        LEFT_SQUARE_BRACKET, LESS_THAN_SIGN, LINE_FEED, LINE_TABULATION, NUMBER_SIGN, PERCENT_SIGN,
         PLUS_SIGN, QUESTION_MARK, REVERSE_SOLIDUS, RIGHT_CURLY_BRACKET, RIGHT_PARENTHESIS,
-        RIGHT_SQUARE_BRACKET, SEMICOLON, SOLIDUS, TILDE, VERTICAL_LINE,
+        RIGHT_SQUARE_BRACKET, SEMICOLON, SOLIDUS, TILDE, VERTICAL_LINE, LATIN_SMALL_LETTER_X,
     },
     EcmaVersion, Reader, RegExpSyntaxError, Wtf16,
 };
@@ -565,7 +567,14 @@ impl<'a> RegExpValidator<'a> {
         self._options.on_capturing_group_leave(start, end, name);
     }
 
-    fn on_quantifier(&mut self, start: usize, end: usize, min: CodePoint, max: CodePoint, greedy: bool) {
+    fn on_quantifier(
+        &mut self,
+        start: usize,
+        end: usize,
+        min: CodePoint,
+        max: CodePoint,
+        greedy: bool,
+    ) {
         self._options.on_quantifier(start, end, min, max, greedy);
     }
 
@@ -1131,13 +1140,34 @@ impl<'a> RegExpValidator<'a> {
         false
     }
 
-    fn consume_extended_pattern_character(&self) -> bool {
-        unimplemented!()
+    fn consume_extended_pattern_character(&mut self) -> bool {
+        let start = self.index();
+        if let Some(cp) = self.current_code_point().filter(|&cp| {
+            !matches!(
+                cp,
+                CIRCUMFLEX_ACCENT
+                    | DOLLAR_SIGN
+                    | REVERSE_SOLIDUS
+                    | FULL_STOP
+                    | ASTERISK
+                    | PLUS_SIGN
+                    | QUESTION_MARK
+                    | LEFT_PARENTHESIS
+                    | RIGHT_PARENTHESIS
+                    | LEFT_SQUARE_BRACKET
+                    | VERTICAL_LINE
+            )
+        }) {
+            self.advance();
+            self.on_character(start, self.index(), cp);
+            return true;
+        }
+        false
     }
 
     fn consume_group_specifier(&mut self) -> Result<bool, RegExpSyntaxError> {
         if self.eat(QUESTION_MARK) {
-            if self.eat_group_name() {
+            if self.eat_group_name()? {
                 if !self._group_names.contains(&self._last_str_value) {
                     self._group_names.insert(self._last_str_value.clone());
                     return Ok(true);
@@ -1152,7 +1182,7 @@ impl<'a> RegExpValidator<'a> {
     fn consume_atom_escape(&mut self) -> Result<bool, RegExpSyntaxError> {
         if self.consume_backreference()?
             || self.consume_character_class_escape()?.is_some()
-            || self.consume_character_escape()
+            || self.consume_character_escape()?
             || self._n_flag && self.consume_k_group_name()
         {
             return Ok(true);
@@ -1264,8 +1294,20 @@ impl<'a> RegExpValidator<'a> {
         Ok(None)
     }
 
-    fn consume_character_escape(&self) -> bool {
-        unimplemented!()
+    fn consume_character_escape(&mut self) -> Result<bool, RegExpSyntaxError> {
+        let start = self.index();
+        if self.eat_control_escape()
+            || self.eat_c_control_letter()
+            || self.eat_zero()
+            || self.eat_hex_escape_sequence()?
+            || self.eat_reg_exp_unicode_escape_sequence(None)
+            || !self.strict() && !self._unicode_mode && self.eat_legacy_octal_escape_sequence()
+            || self.eat_identity_escape()
+        {
+            self.on_character(start - 1, self.index(), self._last_int_value.unwrap());
+            return Ok(true);
+        }
+        Ok(false)
     }
 
     fn consume_k_group_name(&self) -> bool {
@@ -1381,7 +1423,7 @@ impl<'a> RegExpValidator<'a> {
         let start = self.index();
         let mut may_contain_strings = Some(false);
         let mut result: Option<UnicodeSetsConsumeResult> = Default::default();
-        if self.consume_class_set_character() {
+        if self.consume_class_set_character()? {
             if self.consume_class_set_range_from_operator(start)? {
                 self.consume_class_union_right(Default::default())?;
                 return Ok(Default::default());
@@ -1450,7 +1492,7 @@ impl<'a> RegExpValidator<'a> {
         let mut may_contain_strings = left_result.may_contain_strings;
         loop {
             let start = self.index();
-            if self.consume_class_set_character() {
+            if self.consume_class_set_character()? {
                 self.consume_class_set_range_from_operator(start)?;
                 continue;
             }
@@ -1476,7 +1518,7 @@ impl<'a> RegExpValidator<'a> {
         let current_start = self.index();
         let min = self._last_int_value;
         if self.eat(HYPHEN_MINUS) {
-            if self.consume_class_set_character() {
+            if self.consume_class_set_character()? {
                 let max = self._last_int_value;
 
                 if min.is_none() || max.is_none() {
@@ -1507,7 +1549,7 @@ impl<'a> RegExpValidator<'a> {
         if let Some(result) = result {
             return Ok(Some(result));
         }
-        if self.consume_class_set_character() {
+        if self.consume_class_set_character()? {
             return Ok(Some(Default::default()));
         }
         Ok(None)
@@ -1574,7 +1616,7 @@ impl<'a> RegExpValidator<'a> {
         unimplemented!()
     }
 
-    fn consume_class_set_character(&mut self) -> bool {
+    fn consume_class_set_character(&mut self) -> Result<bool, RegExpSyntaxError> {
         let start = self.index();
         let cp = self.current_code_point();
         if cp != self.next_code_point() || !is_class_set_reserved_double_punctuator_character(cp) {
@@ -1582,22 +1624,47 @@ impl<'a> RegExpValidator<'a> {
                 self._last_int_value = Some(cp);
                 self.advance();
                 self.on_character(start, self.index(), self._last_int_value.unwrap());
-                return true;
+                return Ok(true);
             }
         }
         if self.eat(REVERSE_SOLIDUS) {
-            if self.consume_character_escape() {
-                return true;
+            if self.consume_character_escape()? {
+                return Ok(true);
             }
             if is_class_set_reserved_punctuator(self.current_code_point()) {
                 self._last_int_value = self.current_code_point();
                 self.advance();
                 self.on_character(start, self.index(), self._last_int_value.unwrap());
-                return true;
+                return Ok(true);
             }
             if self.eat(LATIN_SMALL_LETTER_B) {
                 self._last_int_value = Some(BACKSPACE);
                 self.on_character(start, self.index(), self._last_int_value.unwrap());
+                return Ok(true);
+            }
+            self.rewind(start);
+        }
+        Ok(false)
+    }
+
+    fn eat_group_name(&mut self) -> Result<bool, RegExpSyntaxError> {
+        if self.eat(LESS_THAN_SIGN) {
+            if self.eat_reg_exp_identifier_name() && self.eat(GREATER_THAN_SIGN) {
+                return Ok(true);
+            }
+            self.raise("Invalid capture group name", None)?;
+        }
+        Ok(false)
+    }
+
+    fn eat_reg_exp_identifier_name(&self) -> bool {
+        unimplemented!()
+    }
+
+    fn eat_c_control_letter(&mut self) -> bool {
+        let start = self.index();
+        if self.eat(LATIN_SMALL_LETTER_C) {
+            if self.eat_control_letter() {
                 return true;
             }
             self.rewind(start);
@@ -1605,7 +1672,54 @@ impl<'a> RegExpValidator<'a> {
         false
     }
 
-    fn eat_group_name(&self) -> bool {
+    fn eat_zero(&mut self) -> bool {
+        if self.current_code_point() == Some(DIGIT_ZERO)
+            && !matches!(
+                self.next_code_point(),
+                Some(next_code_point) if is_decimal_digit(next_code_point)
+            )
+        {
+            self._last_int_value = Some(0);
+            self.advance();
+            return true;
+        }
+        false
+    }
+
+    fn eat_control_escape(&mut self) -> bool {
+        if self.eat(LATIN_SMALL_LETTER_F) {
+            self._last_int_value = Some(FORM_FEED);
+            return true;
+        }
+        if self.eat(LATIN_SMALL_LETTER_N) {
+            self._last_int_value = Some(LINE_FEED);
+            return true;
+        }
+        if self.eat(LATIN_SMALL_LETTER_R) {
+            self._last_int_value = Some(CARRIAGE_RETURN);
+            return true;
+        }
+        if self.eat(LATIN_SMALL_LETTER_T) {
+            self._last_int_value = Some(CHARACTER_TABULATION);
+            return true;
+        }
+        if self.eat(LATIN_SMALL_LETTER_V) {
+            self._last_int_value = Some(LINE_TABULATION);
+            return true;
+        }
+        false
+    }
+
+    fn eat_control_letter(&self) -> bool {
+        unimplemented!()
+    }
+
+    fn eat_reg_exp_unicode_escape_sequence(&self, force_u_flag: Option<bool>) -> bool {
+        let force_u_flag = force_u_flag.unwrap_or_default();
+        unimplemented!()
+    }
+
+    fn eat_identity_escape(&self) -> bool {
         unimplemented!()
     }
 
@@ -1634,9 +1748,41 @@ impl<'a> RegExpValidator<'a> {
         unimplemented!()
     }
 
-    fn eat_decimal_digits(
-        &self,
-    ) -> bool {
+    fn eat_hex_escape_sequence(&mut self) -> Result<bool, RegExpSyntaxError> {
+        let start = self.index();
+        if self.eat(LATIN_SMALL_LETTER_X) {
+            if self.eat_fixed_hex_digits(2) {
+                return Ok(true);
+            }
+            if self._unicode_mode || self.strict() {
+                self.raise("Invalid escape", None)?;
+            }
+            self.rewind(start);
+        }
+        Ok(false)
+    }
+
+    fn eat_decimal_digits(&mut self) -> bool {
+        let start = self.index();
+
+        self._last_int_value = Some(0);
+        while let Some(current_code_point) = self
+            .current_code_point()
+            .filter(|&current_code_point| is_decimal_digit(current_code_point))
+        {
+            self._last_int_value =
+                Some(10 * self._last_int_value.unwrap() + digit_to_int(current_code_point));
+            self.advance();
+        }
+
+        self.index() != start
+    }
+
+    fn eat_legacy_octal_escape_sequence(&self) -> bool {
+        unimplemented!()
+    }
+
+    fn eat_fixed_hex_digits(&self, length: usize) -> bool {
         unimplemented!()
     }
 }

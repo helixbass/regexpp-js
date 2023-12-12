@@ -75,9 +75,23 @@ pub const ZERO_WIDTH_JOINER: CodePoint = 0x200d;
 pub const LINE_SEPARATOR: CodePoint = 0x2028;
 pub const PARAGRAPH_SEPARATOR: CodePoint = 0x2029;
 
+pub fn is_decimal_digit(code: CodePoint) -> bool {
+    code >= DIGIT_ZERO && code <= DIGIT_NINE
+}
+
 pub fn is_line_terminator(code: CodePoint) -> bool {
     matches!(
         code,
         LINE_FEED | CARRIAGE_RETURN | LINE_SEPARATOR | PARAGRAPH_SEPARATOR
     )
+}
+
+pub fn digit_to_int(code: CodePoint) -> CodePoint {
+    if code >= LATIN_SMALL_LETTER_A && code <= LATIN_SMALL_LETTER_F {
+        return code - LATIN_SMALL_LETTER_A + 10;
+    }
+    if code >= LATIN_CAPITAL_LETTER_A && code <= LATIN_CAPITAL_LETTER_F {
+        return code - LATIN_CAPITAL_LETTER_A + 10;
+    }
+    code - DIGIT_ZERO
 }
