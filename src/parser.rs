@@ -225,7 +225,7 @@ impl<'a> validator::Options for RegExpParserState<'a> {
         *self._node.borrow_mut() = self._arena.node(node).maybe_parent();
     }
 
-    fn on_capturing_group_enter(&self, start: usize, name: Option<&[u16]>) {
+    fn on_capturing_group_enter(&self, start: usize, name: Option<&Wtf16>) {
         let parent = self._node.borrow().unwrap();
         assert!(matches!(&*self._arena.node(parent), Node::Alternative(_)));
 
@@ -234,13 +234,13 @@ impl<'a> validator::Options for RegExpParserState<'a> {
             start,
             start,
             Default::default(),
-            name.map(Into::into),
+            name.cloned(),
             Default::default(),
             Default::default(),
         )));
     }
 
-    fn on_capturing_group_leave(&self, start: usize, end: usize, _name: Option<&[u16]>) {
+    fn on_capturing_group_leave(&self, start: usize, end: usize, _name: Option<&Wtf16>) {
         let node = self._node.borrow().unwrap();
         assert!(matches!(
             &*self._arena.node(node),
@@ -254,7 +254,7 @@ impl<'a> validator::Options for RegExpParserState<'a> {
         *self._node.borrow_mut() = self._arena.node(node).maybe_parent();
     }
 
-    fn on_quantifier(&self, start: usize, end: usize, min: usize, max: usize, greedy: bool) {
+    fn on_quantifier(&self, start: usize, end: usize, min: u32, max: u32, greedy: bool) {
         let parent = self._node.borrow().unwrap();
         assert!(matches!(&*self._arena.node(parent), Node::Alternative(_)));
 

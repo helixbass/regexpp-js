@@ -155,8 +155,8 @@ impl Node {
         start: usize,
         end: usize,
         raw: Wtf16,
-        min: usize,
-        max: usize,
+        min: u32,
+        max: u32,
         greedy: bool,
         element: Id<Node>,
     ) -> Self {
@@ -1162,24 +1162,24 @@ pub struct RegExpLiteral {
     pub flags: Id<Node>,   /*Flags*/
 }
 
-fn deserialize_possibly_infinity_usize<'de, D>(deserializer: D) -> Result<usize, D::Error>
+fn deserialize_possibly_infinity_u32<'de, D>(deserializer: D) -> Result<u32, D::Error>
 where
     D: Deserializer<'de>,
 {
     #[derive(Deserialize)]
     #[serde(untagged)]
-    enum StringOrUsize {
+    enum StringOrU32 {
         String(String),
-        Usize(usize),
+        U32(u32),
     }
-    let string_or_usize = StringOrUsize::deserialize(deserializer)?;
-    Ok(match string_or_usize {
-        StringOrUsize::String(value) => {
+    let string_or_u32 = StringOrU32::deserialize(deserializer)?;
+    Ok(match string_or_u32 {
+        StringOrU32::String(value) => {
             // TODO: should handle this better?
             assert!(value == "$$Infinity");
-            usize::MAX
+            u32::MAX
         }
-        StringOrUsize::Usize(value) => value,
+        StringOrU32::U32(value) => value,
     })
 }
 
@@ -1279,8 +1279,8 @@ pub struct AssertionUnresolved {
 #[derive(Clone)]
 pub struct Quantifier {
     _base: NodeBase,
-    pub min: usize,
-    pub max: usize,
+    pub min: u32,
+    pub max: u32,
     pub greedy: bool,
     pub element: Id<Node /*QuantifiableElement*/>,
 }
@@ -1291,9 +1291,9 @@ pub struct QuantifierUnresolved {
     pub start: usize,
     pub end: usize,
     pub raw: Wtf16,
-    min: usize,
-    #[serde(deserialize_with = "deserialize_possibly_infinity_usize")]
-    max: usize,
+    min: u32,
+    #[serde(deserialize_with = "deserialize_possibly_infinity_u32")]
+    max: u32,
     greedy: bool,
     element: NodeUnresolved,
 }

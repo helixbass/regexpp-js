@@ -4,8 +4,10 @@ use serde::{Deserialize, Deserializer};
 use serde_bytes::ByteBuf;
 use wtf8::Wtf8;
 
+use crate::reader::is_surrogate_code_point;
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Hash)]
 pub struct Wtf16(Vec<u16>);
 
 impl Wtf16 {
@@ -14,7 +16,7 @@ impl Wtf16 {
     }
 
     pub fn split_code_points(&self) -> SplitCodePoints {
-        unimplemented!()
+        SplitCodePoints::new(self)
     }
 }
 
@@ -55,12 +57,33 @@ impl From<&str> for Wtf16 {
     }
 }
 
-pub struct SplitCodePoints;
+pub struct SplitCodePoints<'a> {
+    original: &'a Wtf16,
+    next_index: usize,
+}
 
-impl Iterator for SplitCodePoints {
+impl<'a> SplitCodePoints<'a> {
+    pub fn new(
+        original: &'a Wtf16,
+    ) -> Self {
+        Self {
+            original,
+            next_index: 0,
+        }
+    }
+}
+
+impl<'a> Iterator for SplitCodePoints<'a> {
     type Item = Wtf16;
 
     fn next(&mut self) -> Option<Self::Item> {
-        todo!()
+        if self.next_index >= self.original.len() {
+            return None;
+        }
+        let next_unit = self.original[self.next_index];
+        if !is_surrogate_code_point(next_unit) {
+            return Some(vec![next_unit].into());
+        }
+        unimplemented!()
     }
 }

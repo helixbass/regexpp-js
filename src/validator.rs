@@ -1,4 +1,4 @@
-use std::{collections::HashSet, rc::Rc};
+use std::{collections::HashSet, rc::Rc, ops::Range};
 
 use derive_builder::Builder;
 use once_cell::sync::Lazy;
@@ -209,9 +209,9 @@ pub trait Options {
     fn on_alternative_leave(&self, start: usize, end: usize, index: usize) {}
     fn on_group_enter(&self, start: usize) {}
     fn on_group_leave(&self, start: usize, end: usize) {}
-    fn on_capturing_group_enter(&self, start: usize, name: Option<&[u16]>) {}
-    fn on_capturing_group_leave(&self, start: usize, end: usize, name: Option<&[u16]>) {}
-    fn on_quantifier(&self, start: usize, end: usize, min: usize, max: usize, greedy: bool) {}
+    fn on_capturing_group_enter(&self, start: usize, name: Option<&Wtf16>) {}
+    fn on_capturing_group_leave(&self, start: usize, end: usize, name: Option<&Wtf16>) {}
+    fn on_quantifier(&self, start: usize, end: usize, min: u32, max: u32, greedy: bool) {}
     fn on_lookaround_assertion_enter(&self, start: usize, kind: AssertionKind, negate: bool) {}
     fn on_lookaround_assertion_leave(
         &self,
@@ -303,10 +303,12 @@ pub struct RegExpValidator<'a> {
     _unicode_sets_mode: bool,
     _n_flag: bool,
     _last_int_value: Option<CodePoint>,
+    _last_range: Range<CodePoint>,
+    _last_str_value: Wtf16,
     _last_assertion_is_quantifiable: bool,
     _num_capturing_parens: usize,
-    _group_names: HashSet<String>,
-    _backreference_names: HashSet<String>,
+    _group_names: HashSet<Wtf16>,
+    _backreference_names: HashSet<Wtf16>,
     _src_ctx: Option<RegExpValidatorSourceContext>,
 }
 
@@ -319,6 +321,8 @@ impl<'a> RegExpValidator<'a> {
             _unicode_sets_mode: Default::default(),
             _n_flag: Default::default(),
             _last_int_value: Some(Default::default()),
+            _last_range: 0..CodePoint::MAX,
+            _last_str_value: Default::default(),
             _last_assertion_is_quantifiable: Default::default(),
             _num_capturing_parens: Default::default(),
             _group_names: Default::default(),
@@ -551,6 +555,18 @@ impl<'a> RegExpValidator<'a> {
 
     fn on_group_leave(&mut self, start: usize, end: usize) {
         self._options.on_group_leave(start, end);
+    }
+
+    fn on_capturing_group_enter(&mut self, start: usize, name: Option<&Wtf16>) {
+        self._options.on_capturing_group_enter(start, name);
+    }
+
+    fn on_capturing_group_leave(&mut self, start: usize, end: usize, name: Option<&Wtf16>) {
+        self._options.on_capturing_group_leave(start, end, name);
+    }
+
+    fn on_quantifier(&mut self, start: usize, end: usize, min: CodePoint, max: CodePoint, greedy: bool) {
+        self._options.on_quantifier(start, end, min, max, greedy);
     }
 
     fn on_lookaround_assertion_enter(&mut self, start: usize, kind: AssertionKind, negate: bool) {
@@ -866,7 +882,7 @@ impl<'a> RegExpValidator<'a> {
             self.eat(VERTICAL_LINE)
         } {}
 
-        if self.consume_quantifier(Some(true)) {
+        if self.consume_quantifier(Some(true))? {
             self.raise("Nothing to repeat", None)?;
         }
         if self.eat(LEFT_CURLY_BRACKET) {
@@ -888,15 +904,16 @@ impl<'a> RegExpValidator<'a> {
     fn consume_term(&mut self) -> Result<bool, RegExpSyntaxError> {
         if self._unicode_mode || self.strict() {
             return Ok(self.consume_assertion()?
-                || self.consume_atom()? && self.consume_optional_quantifier());
+                || self.consume_atom()? && self.consume_optional_quantifier()?);
         }
         Ok(self.consume_assertion()?
-            && (!self._last_assertion_is_quantifiable || self.consume_optional_quantifier())
-            || self.consume_extended_atom()? && self.consume_optional_quantifier())
+            && (!self._last_assertion_is_quantifiable || self.consume_optional_quantifier()?)
+            || self.consume_extended_atom()? && self.consume_optional_quantifier()?)
     }
 
-    fn consume_optional_quantifier(&self) -> bool {
-        unimplemented!()
+    fn consume_optional_quantifier(&mut self) -> Result<bool, RegExpSyntaxError> {
+        self.consume_quantifier(None)?;
+        Ok(true)
     }
 
     fn consume_assertion(&mut self) -> Result<bool, RegExpSyntaxError> {
@@ -947,9 +964,63 @@ impl<'a> RegExpValidator<'a> {
         Ok(false)
     }
 
-    fn consume_quantifier(&self, no_consume: Option<bool>) -> bool {
+    fn consume_quantifier(&mut self, no_consume: Option<bool>) -> Result<bool, RegExpSyntaxError> {
         let no_consume = no_consume.unwrap_or_default();
-        unimplemented!()
+        let start = self.index();
+        let min;
+        let max;
+
+        if self.eat(ASTERISK) {
+            min = 0;
+            max = CodePoint::MAX;
+        } else if self.eat(PLUS_SIGN) {
+            min = 1;
+            max = CodePoint::MAX;
+        } else if self.eat(QUESTION_MARK) {
+            min = 0;
+            max = 1;
+        } else if self.eat_braced_quantifier(no_consume)? {
+            min = self._last_range.start;
+            max = self._last_range.end;
+        } else {
+            return Ok(false);
+        }
+
+        let greedy = !self.eat(QUESTION_MARK);
+
+        if !no_consume {
+            self.on_quantifier(start, self.index(), min, max, greedy);
+        }
+        Ok(true)
+    }
+
+    fn eat_braced_quantifier(&mut self, no_error: bool) -> Result<bool, RegExpSyntaxError> {
+        let start = self.index();
+        if self.eat(LEFT_CURLY_BRACKET) {
+            if self.eat_decimal_digits() {
+                let min = self._last_int_value.unwrap();
+                let mut max = min;
+                if self.eat(COMMA) {
+                    max = if self.eat_decimal_digits() {
+                        self._last_int_value.unwrap()
+                    } else {
+                        CodePoint::MAX
+                    };
+                }
+                if self.eat(RIGHT_CURLY_BRACKET) {
+                    if !no_error && max < min {
+                        self.raise("numbers out of order in {} quantifier", None)?;
+                    }
+                    self._last_range = min..max;
+                    return Ok(true);
+                }
+            }
+            if !no_error && (self._unicode_mode || self.strict()) {
+                self.raise("Incomplete quantifier", None)?;
+            }
+            self.rewind(start);
+        }
+        Ok(false)
     }
 
     fn consume_atom(&mut self) -> Result<bool, RegExpSyntaxError> {
@@ -958,7 +1029,7 @@ impl<'a> RegExpValidator<'a> {
             || self.consume_reverse_solidus_atom_escape()?
             || self.consume_character_class()?.is_some()
             || self.consume_uncapturing_group()?
-            || self.consume_capturing_group())
+            || self.consume_capturing_group()?)
     }
 
     fn consume_dot(&mut self) -> bool {
@@ -994,8 +1065,28 @@ impl<'a> RegExpValidator<'a> {
         Ok(false)
     }
 
-    fn consume_capturing_group(&self) -> bool {
-        unimplemented!()
+    fn consume_capturing_group(&mut self) -> Result<bool, RegExpSyntaxError> {
+        let start = self.index();
+        if self.eat(LEFT_PARENTHESIS) {
+            let mut name: Option<Wtf16> = Default::default();
+            if self.ecma_version() >= EcmaVersion::_2018 {
+                if self.consume_group_specifier()? {
+                    name = Some(self._last_str_value.clone());
+                }
+            } else if self.current_code_point() == Some(QUESTION_MARK) {
+                self.raise("Invalid group", None)?;
+            }
+
+            self.on_capturing_group_enter(start, name.as_ref());
+            self.consume_disjunction()?;
+            if !self.eat(RIGHT_PARENTHESIS) {
+                self.raise("Unterminated group", None)?;
+            }
+            self.on_capturing_group_leave(start, self.index(), name.as_ref());
+
+            return Ok(true);
+        }
+        Ok(false)
     }
 
     fn consume_extended_atom(&mut self) -> Result<bool, RegExpSyntaxError> {
@@ -1004,8 +1095,8 @@ impl<'a> RegExpValidator<'a> {
             || self.consume_reverse_solidus_followed_by_c()
             || self.consume_character_class()?.is_some()
             || self.consume_uncapturing_group()?
-            || self.consume_capturing_group()
-            || self.consume_invalid_braced_quantifier()
+            || self.consume_capturing_group()?
+            || self.consume_invalid_braced_quantifier()?
             || self.consume_extended_pattern_character())
     }
 
@@ -1022,8 +1113,11 @@ impl<'a> RegExpValidator<'a> {
         false
     }
 
-    fn consume_invalid_braced_quantifier(&self) -> bool {
-        unimplemented!()
+    fn consume_invalid_braced_quantifier(&mut self) -> Result<bool, RegExpSyntaxError> {
+        if self.eat_braced_quantifier(true)? {
+            self.raise("Nothing to repeat", None)?;
+        }
+        Ok(false)
     }
 
     fn consume_pattern_character(&mut self) -> bool {
@@ -1039,6 +1133,20 @@ impl<'a> RegExpValidator<'a> {
 
     fn consume_extended_pattern_character(&self) -> bool {
         unimplemented!()
+    }
+
+    fn consume_group_specifier(&mut self) -> Result<bool, RegExpSyntaxError> {
+        if self.eat(QUESTION_MARK) {
+            if self.eat_group_name() {
+                if !self._group_names.contains(&self._last_str_value) {
+                    self._group_names.insert(self._last_str_value.clone());
+                    return Ok(true);
+                }
+                self.raise("Duplicate capture group name", None)?;
+            }
+            self.raise("Invalid group", None)?;
+        }
+        Ok(false)
     }
 
     fn consume_atom_escape(&mut self) -> Result<bool, RegExpSyntaxError> {
@@ -1497,6 +1605,10 @@ impl<'a> RegExpValidator<'a> {
         false
     }
 
+    fn eat_group_name(&self) -> bool {
+        unimplemented!()
+    }
+
     fn eat_decimal_escape(&mut self) -> bool {
         self._last_int_value = Some(0);
         let mut cp = self.current_code_point();
@@ -1519,6 +1631,12 @@ impl<'a> RegExpValidator<'a> {
     fn eat_unicode_property_value_expression(
         &self,
     ) -> Option<UnicodePropertyValueExpressionConsumeResult> {
+        unimplemented!()
+    }
+
+    fn eat_decimal_digits(
+        &self,
+    ) -> bool {
         unimplemented!()
     }
 }

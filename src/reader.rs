@@ -2,7 +2,7 @@ use crate::Wtf16;
 
 pub type CodePoint = u32;
 
-fn is_surrogate_code_point(value: u16) -> bool {
+pub fn is_surrogate_code_point(value: u16) -> bool {
     (0xd800..=0xdfff).contains(&value)
 }
 
