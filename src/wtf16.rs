@@ -4,7 +4,10 @@ use serde::{Deserialize, Deserializer};
 use serde_bytes::ByteBuf;
 use wtf8::Wtf8;
 
-use crate::{unicode::{is_lead_surrogate, is_trail_surrogate}, CodePoint};
+use crate::{
+    unicode::{is_lead_surrogate, is_trail_surrogate},
+    CodePoint,
+};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Hash)]
 pub struct Wtf16(Vec<u16>);
@@ -65,16 +68,13 @@ impl From<&str> for Wtf16 {
 
 impl From<CodePoint> for Wtf16 {
     fn from(value: CodePoint) -> Self {
-        Self(
-            if value > 0xffff {
-                let mut buffer: Vec<u16> = Vec::with_capacity(2);
-                char::try_from(value).unwrap().encode_utf16(&mut buffer);
-                buffer
-            } else {
-                vec![u16::try_from(value).unwrap()]
-            }
-            .into(),
-        )
+        Self(if value > 0xffff {
+            let mut buffer = vec![0, 0];
+            char::try_from(value).unwrap().encode_utf16(&mut buffer);
+            buffer
+        } else {
+            vec![u16::try_from(value).unwrap()]
+        })
     }
 }
 
