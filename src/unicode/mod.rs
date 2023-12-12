@@ -85,6 +85,10 @@ pub fn is_decimal_digit(code: CodePoint) -> bool {
     code >= DIGIT_ZERO && code <= DIGIT_NINE
 }
 
+pub fn is_octal_digit(code: CodePoint) -> bool {
+    code >= DIGIT_ZERO && code <= DIGIT_SEVEN
+}
+
 pub fn is_line_terminator(code: CodePoint) -> bool {
     matches!(
         code,

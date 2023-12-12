@@ -736,14 +736,17 @@ impl NodeInterface for Node {
 fn resolve_location_vec(
     arena: &AllArenas,
     nodes: &[Id<Node>],
+    vec_property_name: &str,
     path: &mut Vec<String>,
     path_map: &mut HashMap<Id<Node>, String>,
 ) {
+    path.push(vec_property_name.to_owned());
     for (index, &node) in nodes.iter().enumerate() {
         path.push(index.to_string());
         resolve_location(arena, node, path, path_map);
         path.pop();
     }
+    path.pop();
 }
 
 pub fn resolve_location(
@@ -755,13 +758,13 @@ pub fn resolve_location(
     path_map.insert(node, format!("/{}", path.join("/")));
     match &*arena.node(node) {
         Node::Alternative(node) => {
-            resolve_location_vec(arena, &node.elements, path, path_map);
+            resolve_location_vec(arena, &node.elements, "elements", path, path_map);
         }
         Node::CapturingGroup(node) => {
-            resolve_location_vec(arena, &node.alternatives, path, path_map);
+            resolve_location_vec(arena, &node.alternatives, "alternatives", path, path_map);
         }
         Node::CharacterClass(node) => {
-            resolve_location_vec(arena, &node.elements, path, path_map);
+            resolve_location_vec(arena, &node.elements, "elements", path, path_map);
         }
         Node::CharacterClassRange(node) => {
             path.push("min".to_owned());
@@ -782,7 +785,7 @@ pub fn resolve_location(
             path.pop();
         }
         Node::ClassStringDisjunction(node) => {
-            resolve_location_vec(arena, &node.alternatives, path, path_map);
+            resolve_location_vec(arena, &node.alternatives, "alternatives", path, path_map);
         }
         Node::ClassSubtraction(node) => {
             path.push("left".to_owned());
@@ -799,15 +802,15 @@ pub fn resolve_location(
             path.pop();
         }
         Node::Group(node) => {
-            resolve_location_vec(arena, &node.alternatives, path, path_map);
+            resolve_location_vec(arena, &node.alternatives, "alternatives", path, path_map);
         }
         Node::Assertion(node) => {
             if let Some(alternatives) = node.alternatives.as_ref() {
-                resolve_location_vec(arena, alternatives, path, path_map);
+                resolve_location_vec(arena, alternatives, "alternatives", path, path_map);
             }
         }
         Node::Pattern(node) => {
-            resolve_location_vec(arena, &node.alternatives, path, path_map);
+            resolve_location_vec(arena, &node.alternatives, "alternatives", path, path_map);
         }
         Node::Quantifier(node) => {
             path.push("element".to_owned());
@@ -824,7 +827,7 @@ pub fn resolve_location(
             path.pop();
         }
         Node::StringAlternative(node) => {
-            resolve_location_vec(arena, &node.elements, path, path_map);
+            resolve_location_vec(arena, &node.elements, "elements", path, path_map);
         }
         _ => (),
     }

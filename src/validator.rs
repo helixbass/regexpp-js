@@ -11,7 +11,8 @@ use crate::{
     regexp_syntax_error::{self, new_reg_exp_syntax_error},
     unicode::{
         combine_surrogate_pair, digit_to_int, is_decimal_digit, is_id_start, is_lead_surrogate,
-        is_line_terminator, is_trail_surrogate, is_valid_unicode_property, AMPERSAND, ASTERISK,
+        is_line_terminator, is_octal_digit, is_trail_surrogate, is_valid_lone_unicode_property,
+        is_valid_lone_unicode_property_of_string, is_valid_unicode_property, AMPERSAND, ASTERISK,
         BACKSPACE, CARRIAGE_RETURN, CHARACTER_TABULATION, CIRCUMFLEX_ACCENT, COLON, COMMA,
         COMMERCIAL_AT, DIGIT_NINE, DIGIT_ONE, DIGIT_ZERO, DOLLAR_SIGN, EQUALS_SIGN,
         EXCLAMATION_MARK, FORM_FEED, FULL_STOP, GRAVE_ACCENT, GREATER_THAN_SIGN, HYPHEN_MINUS,
@@ -24,7 +25,7 @@ use crate::{
         LEFT_CURLY_BRACKET, LEFT_PARENTHESIS, LEFT_SQUARE_BRACKET, LESS_THAN_SIGN, LINE_FEED,
         LINE_TABULATION, LOW_LINE, NUMBER_SIGN, PERCENT_SIGN, PLUS_SIGN, QUESTION_MARK,
         REVERSE_SOLIDUS, RIGHT_CURLY_BRACKET, RIGHT_PARENTHESIS, RIGHT_SQUARE_BRACKET, SEMICOLON,
-        SOLIDUS, TILDE, VERTICAL_LINE, is_valid_lone_unicode_property, is_valid_lone_unicode_property_of_string,
+        SOLIDUS, TILDE, VERTICAL_LINE,
     },
     EcmaVersion, Reader, RegExpSyntaxError, Wtf16,
 };
@@ -132,6 +133,10 @@ fn is_class_set_reserved_punctuator(cp: Option<CodePoint>) -> bool {
 
 fn is_identifier_start_char(cp: CodePoint) -> bool {
     is_id_start(cp) || cp == DOLLAR_SIGN || cp == LOW_LINE
+}
+
+fn is_identifier_part_char(cp: CodePoint) -> bool {
+    unimplemented!()
 }
 
 #[derive(Copy, Clone, Default)]
@@ -1306,7 +1311,7 @@ impl<'a> RegExpValidator<'a> {
             || self.eat_c_control_letter()
             || self.eat_zero()
             || self.eat_hex_escape_sequence()?
-            || self.eat_reg_exp_unicode_escape_sequence(None)
+            || self.eat_reg_exp_unicode_escape_sequence(None)?
             || !self.strict() && !self._unicode_mode && self.eat_legacy_octal_escape_sequence()
             || self.eat_identity_escape()
         {
@@ -1402,7 +1407,7 @@ impl<'a> RegExpValidator<'a> {
         }
 
         if self.eat(REVERSE_SOLIDUS) {
-            if self.consume_class_escape() {
+            if self.consume_class_escape()? {
                 return Ok(true);
             }
             if !self.strict() && self.current_code_point() == Some(LATIN_SMALL_LETTER_C) {
@@ -1419,8 +1424,38 @@ impl<'a> RegExpValidator<'a> {
         Ok(false)
     }
 
-    fn consume_class_escape(&self) -> bool {
-        unimplemented!()
+    fn consume_class_escape(&mut self) -> Result<bool, RegExpSyntaxError> {
+        let start = self.index();
+
+        if self.eat(LATIN_SMALL_LETTER_B) {
+            self._last_int_value = Some(BACKSPACE);
+            self.on_character(start - 1, self.index(), self._last_int_value.unwrap());
+            return Ok(true);
+        }
+
+        if self._unicode_mode && self.eat(HYPHEN_MINUS) {
+            self._last_int_value = Some(HYPHEN_MINUS);
+            self.on_character(start - 1, self.index(), self._last_int_value.unwrap());
+            return Ok(true);
+        }
+
+        if !self.strict()
+            && !self._unicode_mode
+            && self.current_code_point() == Some(LATIN_SMALL_LETTER_C)
+        {
+            if let Some(cp) = self
+                .next_code_point()
+                .filter(|&cp| is_decimal_digit(cp) || cp == LOW_LINE)
+            {
+                self.advance();
+                self.advance();
+                self._last_int_value = Some(cp % 0x20);
+                self.on_character(start - 1, self.index(), self._last_int_value.unwrap());
+                return Ok(true);
+            }
+        }
+
+        Ok(self.consume_character_class_escape()?.is_some() || self.consume_character_escape()?)
     }
 
     fn consume_class_set_expression(
@@ -1655,7 +1690,7 @@ impl<'a> RegExpValidator<'a> {
 
     fn eat_group_name(&mut self) -> Result<bool, RegExpSyntaxError> {
         if self.eat(LESS_THAN_SIGN) {
-            if self.eat_reg_exp_identifier_name() && self.eat(GREATER_THAN_SIGN) {
+            if self.eat_reg_exp_identifier_name()? && self.eat(GREATER_THAN_SIGN) {
                 return Ok(true);
             }
             self.raise("Invalid capture group name", None)?;
@@ -1663,26 +1698,26 @@ impl<'a> RegExpValidator<'a> {
         Ok(false)
     }
 
-    fn eat_reg_exp_identifier_name(&mut self) -> bool {
-        if self.eat_reg_exp_identifier_start() {
+    fn eat_reg_exp_identifier_name(&mut self) -> Result<bool, RegExpSyntaxError> {
+        if self.eat_reg_exp_identifier_start()? {
             self._last_str_value = self._last_int_value.unwrap().into();
-            while self.eat_reg_exp_identifier_part() {
+            while self.eat_reg_exp_identifier_part()? {
                 (*self._last_str_value)
                     .extend(Wtf16::from(self._last_int_value.unwrap()).iter().copied());
             }
-            return true;
+            return Ok(true);
         }
-        false
+        Ok(false)
     }
 
-    fn eat_reg_exp_identifier_start(&mut self) -> bool {
+    fn eat_reg_exp_identifier_start(&mut self) -> Result<bool, RegExpSyntaxError> {
         let start = self.index();
         let force_u_flag = !self._unicode_mode && self.ecma_version() >= EcmaVersion::_2020;
         let mut cp = self.current_code_point();
         self.advance();
 
         if cp == Some(REVERSE_SOLIDUS)
-            && self.eat_reg_exp_unicode_escape_sequence(Some(force_u_flag))
+            && self.eat_reg_exp_unicode_escape_sequence(Some(force_u_flag))?
         {
             cp = self._last_int_value;
         } else if force_u_flag
@@ -1700,17 +1735,45 @@ impl<'a> RegExpValidator<'a> {
 
         if cp.matches(|cp| is_identifier_start_char(cp)) {
             self._last_int_value = cp;
-            return true;
+            return Ok(true);
         }
 
         if self.index() != start {
             self.rewind(start);
         }
-        false
+        Ok(false)
     }
 
-    fn eat_reg_exp_identifier_part(&self) -> bool {
-        unimplemented!()
+    fn eat_reg_exp_identifier_part(&mut self) -> Result<bool, RegExpSyntaxError> {
+        let start = self.index();
+        let force_u_flag = !self._unicode_mode && self.ecma_version() >= EcmaVersion::_2020;
+        let mut cp = self.current_code_point();
+        self.advance();
+
+        if cp == Some(REVERSE_SOLIDUS)
+            && self.eat_reg_exp_unicode_escape_sequence(Some(force_u_flag))?
+        {
+            cp = self._last_int_value;
+        } else if force_u_flag
+            && cp.matches(is_lead_surrogate)
+            && self.current_code_point().matches(is_trail_surrogate)
+        {
+            cp = Some(combine_surrogate_pair(
+                cp.unwrap(),
+                self.current_code_point().unwrap(),
+            ));
+            self.advance();
+        }
+
+        if cp.matches(is_identifier_part_char) {
+            self._last_int_value = cp;
+            return Ok(true);
+        }
+
+        if self.index() != start {
+            self.rewind(start);
+        }
+        Ok(false)
     }
 
     fn eat_c_control_letter(&mut self) -> bool {
@@ -1766,8 +1829,35 @@ impl<'a> RegExpValidator<'a> {
         unimplemented!()
     }
 
-    fn eat_reg_exp_unicode_escape_sequence(&self, force_u_flag: Option<bool>) -> bool {
+    fn eat_reg_exp_unicode_escape_sequence(
+        &mut self,
+        force_u_flag: Option<bool>,
+    ) -> Result<bool, RegExpSyntaxError> {
         let force_u_flag = force_u_flag.unwrap_or_default();
+        let start = self.index();
+        let u_flag = force_u_flag || self._unicode_mode;
+
+        if self.eat(LATIN_SMALL_LETTER_U) {
+            if u_flag && self.eat_reg_exp_unicode_surrogate_pair_escape()
+                || self.eat_fixed_hex_digits(4)
+                || u_flag && self.eat_reg_exp_unicode_code_point_escape()
+            {
+                return Ok(true);
+            }
+            if self.strict() || u_flag {
+                self.raise("Invalid unicode escape", None)?;
+            }
+            self.rewind(start);
+        }
+
+        Ok(false)
+    }
+
+    fn eat_reg_exp_unicode_surrogate_pair_escape(&self) -> bool {
+        unimplemented!()
+    }
+
+    fn eat_reg_exp_unicode_code_point_escape(&self) -> bool {
         unimplemented!()
     }
 
@@ -1894,8 +1984,32 @@ impl<'a> RegExpValidator<'a> {
         self.index() != start
     }
 
-    fn eat_legacy_octal_escape_sequence(&self) -> bool {
-        unimplemented!()
+    fn eat_legacy_octal_escape_sequence(&mut self) -> bool {
+        if self.eat_octal_digit() {
+            let n1 = self._last_int_value.unwrap();
+            if self.eat_octal_digit() {
+                let n2 = self._last_int_value.unwrap();
+                if n1 <= 3 && self.eat_octal_digit() {
+                    self._last_int_value = Some(n1 * 64 + n2 * 8 + self._last_int_value.unwrap());
+                } else {
+                    self._last_int_value = Some(n1 * 8 + n2);
+                }
+            } else {
+                self._last_int_value = Some(n1);
+            }
+            return true;
+        }
+        false
+    }
+
+    fn eat_octal_digit(&mut self) -> bool {
+        if let Some(cp) = self.current_code_point().filter(|&cp| is_octal_digit(cp)) {
+            self.advance();
+            self._last_int_value = Some(cp - DIGIT_ZERO);
+            return true;
+        }
+        self._last_int_value = Some(0);
+        false
     }
 
     fn eat_fixed_hex_digits(&self, length: usize) -> bool {
