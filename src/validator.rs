@@ -460,6 +460,7 @@ impl<'a> RegExpValidator<'a> {
         {
             self._n_flag = true;
             self.rewind(start);
+            self.consume_pattern()?;
         }
 
         Ok(())
