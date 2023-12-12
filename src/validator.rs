@@ -1856,8 +1856,14 @@ impl<'a> RegExpValidator<'a> {
         false
     }
 
-    fn eat_control_letter(&self) -> bool {
-        unimplemented!()
+    fn eat_control_letter(&mut self) -> bool {
+        let cp = self.current_code_point();
+        if let Some(cp) = cp.filter(|&cp| is_latin_letter(cp)) {
+            self.advance();
+            self._last_int_value = Some(cp % 0x20);
+            return true;
+        }
+        false
     }
 
     fn eat_reg_exp_unicode_escape_sequence(
