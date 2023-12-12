@@ -10,7 +10,7 @@ use crate::{
     ast::{Node, NodeInterface},
     ecma_versions::{EcmaVersion, LATEST_ECMA_VERSION},
     unicode::HYPHEN_MINUS,
-    validator::{self, AssertionKind, CapturingGroupKey, CharacterKind, RegExpFlags},
+    validator::{self, AssertionKind, CapturingGroupKey, CharacterKind, RegExpFlags, ValidatePatternFlags},
     CodePoint, RegExpValidator, Result,
     Wtf16,
 };
@@ -869,5 +869,39 @@ impl<'a> RegExpParser<'a> {
         self._arena.node_mut(pattern).set_parent(Some(literal));
         self._arena.node_mut(flags).set_parent(Some(literal));
         Ok(literal)
+    }
+
+    pub fn parse_pattern(
+        &mut self,
+        source: &[u16],
+        start: Option<usize>,
+        end: Option<usize>,
+        flags: Option<ValidatePatternFlags>,
+    ) -> Result<Id<Node>> {
+        let start = start.unwrap_or(0);
+        let end = end.unwrap_or_else(|| source.len());
+        *self._state.source.borrow_mut() = source.into();
+        self._validator.validate_pattern(
+            source,
+            Some(start),
+            Some(end),
+            flags,
+        )?;
+        Ok(self._state.pattern())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use speculoos::prelude::*;
+
+    use super::*;
+
+    #[test]
+    fn test_parse_pattern_function() {
+        let arena = AllArenas::default();
+        assert_that!(
+            &RegExpParser::new(&arena, None).parse_pattern(&Wtf16::from(r#"\"#), None, None, None).unwrap_err().message
+        ).contains(r#"\ at end of pattern"#);
     }
 }

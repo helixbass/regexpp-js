@@ -64,7 +64,6 @@ mod tests {
     #[test]
     fn test_parse_reg_exp_literal_fixtures() {
         for (filename, fixture) in &*FIXTURES_DATA {
-            println!("filename: {filename:#?}");
             let options = fixture.options;
             if filename.to_str().unwrap().contains("-valid") {
                 for result in fixture.patterns.values() {
@@ -77,7 +76,6 @@ mod tests {
             }
 
             for (source, result) in &fixture.patterns {
-                println!("source: {source:#?}");
                 let source: Wtf16 = (&**source).into();
                 let arena = AllArenas::default();
                 match result {
