@@ -26,7 +26,7 @@ use crate::{
         LEFT_CURLY_BRACKET, LEFT_PARENTHESIS, LEFT_SQUARE_BRACKET, LESS_THAN_SIGN, LINE_FEED,
         LINE_TABULATION, LOW_LINE, NUMBER_SIGN, PERCENT_SIGN, PLUS_SIGN, QUESTION_MARK,
         REVERSE_SOLIDUS, RIGHT_CURLY_BRACKET, RIGHT_PARENTHESIS, RIGHT_SQUARE_BRACKET, SEMICOLON,
-        SOLIDUS, TILDE, VERTICAL_LINE, ZERO_WIDTH_JOINER, ZERO_WIDTH_NON_JOINER,
+        SOLIDUS, TILDE, VERTICAL_LINE, ZERO_WIDTH_JOINER, ZERO_WIDTH_NON_JOINER, is_hex_digit,
     },
     EcmaVersion, Reader, RegExpSyntaxError, Wtf16,
 };
@@ -2019,7 +2019,6 @@ impl<'a> RegExpValidator<'a> {
             self.advance();
         }
         !self._last_str_value.is_empty()
-
     }
 
     fn eat_lone_unicode_property_name_or_value(&mut self) -> bool {
@@ -2084,8 +2083,20 @@ impl<'a> RegExpValidator<'a> {
         false
     }
 
-    fn eat_fixed_hex_digits(&self, length: usize) -> bool {
-        unimplemented!()
+    fn eat_fixed_hex_digits(&mut self, length: usize) -> bool {
+        let start = self.index();
+        self._last_int_value = Some(0);
+        for _ in 0..length {
+            let Some(cp) = self.current_code_point().filter(|&cp| {
+                is_hex_digit(cp)
+            }) else {
+                self.rewind(start);
+                return false;
+            };
+            self._last_int_value = Some(16 * self._last_int_value.unwrap() + digit_to_int(cp));
+            self.advance();
+        }
+        true
     }
 }
 

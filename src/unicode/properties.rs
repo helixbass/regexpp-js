@@ -4,6 +4,7 @@ use once_cell::sync::Lazy;
 
 use crate::ecma_versions::EcmaVersion;
 
+#[derive(Clone, Debug)]
 struct DataSet {
     _raw2018: &'static str,
     _raw2019: &'static str,
@@ -51,43 +52,43 @@ impl DataSet {
 
     pub fn es2018(&self) -> &HashSet<&'static str> {
         self._set2018.get_or_init(|| {
-            self._raw2018.split("").collect()
+            self._raw2018.split(' ').collect()
         })
     }
 
     pub fn es2019(&self) -> &HashSet<&'static str> {
         self._set2019.get_or_init(|| {
-            self._raw2019.split("").collect()
+            self._raw2019.split(' ').collect()
         })
     }
 
     pub fn es2020(&self) -> &HashSet<&'static str> {
         self._set2020.get_or_init(|| {
-            self._raw2020.split("").collect()
+            self._raw2020.split(' ').collect()
         })
     }
 
     pub fn es2021(&self) -> &HashSet<&'static str> {
         self._set2021.get_or_init(|| {
-            self._raw2021.split("").collect()
+            self._raw2021.split(' ').collect()
         })
     }
 
     pub fn es2022(&self) -> &HashSet<&'static str> {
         self._set2022.get_or_init(|| {
-            self._raw2022.split("").collect()
+            self._raw2022.split(' ').collect()
         })
     }
 
     pub fn es2023(&self) -> &HashSet<&'static str> {
         self._set2023.get_or_init(|| {
-            self._raw2023.split("").collect()
+            self._raw2023.split(' ').collect()
         })
     }
 
     pub fn es2024(&self) -> &HashSet<&'static str> {
         self._set2024.get_or_init(|| {
-            self._raw2024.split("").collect()
+            self._raw2024.split(' ').collect()
         })
     }
 }
