@@ -11,7 +11,7 @@ use crate::{
     regexp_syntax_error::{self, new_reg_exp_syntax_error},
     unicode::{
         combine_surrogate_pair, digit_to_int, is_decimal_digit, is_id_continue, is_id_start,
-        is_lead_surrogate, is_line_terminator, is_octal_digit, is_trail_surrogate,
+        is_latin_letter, is_lead_surrogate, is_line_terminator, is_octal_digit, is_trail_surrogate,
         is_valid_lone_unicode_property, is_valid_lone_unicode_property_of_string,
         is_valid_unicode_property, AMPERSAND, ASTERISK, BACKSPACE, CARRIAGE_RETURN,
         CHARACTER_TABULATION, CIRCUMFLEX_ACCENT, COLON, COMMA, COMMERCIAL_AT, DIGIT_NINE,
@@ -138,6 +138,14 @@ fn is_identifier_start_char(cp: CodePoint) -> bool {
 
 fn is_identifier_part_char(cp: CodePoint) -> bool {
     is_id_continue(cp) || matches!(cp, DOLLAR_SIGN | ZERO_WIDTH_NON_JOINER | ZERO_WIDTH_JOINER)
+}
+
+fn is_unicode_property_name_character(cp: CodePoint) -> bool {
+    is_latin_letter(cp) || cp == LOW_LINE
+}
+
+fn is_unicode_property_value_character(cp: CodePoint) -> bool {
+    is_unicode_property_name_character(cp) || is_decimal_digit(cp)
 }
 
 #[derive(Copy, Clone, Default)]
@@ -1662,13 +1670,15 @@ impl<'a> RegExpValidator<'a> {
         Ok(None)
     }
 
-    fn consume_class_string(&mut self, i: usize) -> Result<UnicodeSetsConsumeResult, RegExpSyntaxError> {
+    fn consume_class_string(
+        &mut self,
+        i: usize,
+    ) -> Result<UnicodeSetsConsumeResult, RegExpSyntaxError> {
         let start = self.index();
 
         let mut count = 0;
         self.on_string_alternative_enter(start, i);
-        while self.current_code_point().is_some() &&
-            self.consume_class_set_character()? {
+        while self.current_code_point().is_some() && self.consume_class_set_character()? {
             count += 1;
         }
         self.on_string_alternative_leave(start, self.index(), i);
@@ -1985,16 +1995,35 @@ impl<'a> RegExpValidator<'a> {
         Ok(None)
     }
 
-    fn eat_unicode_property_name(&self) -> bool {
-        unimplemented!()
+    fn eat_unicode_property_name(&mut self) -> bool {
+        self._last_str_value = Default::default();
+        while let Some(current_code_point) = self
+            .current_code_point()
+            .filter(|&current_code_point| is_unicode_property_name_character(current_code_point))
+        {
+            self._last_str_value
+                .extend(Wtf16::from(current_code_point).iter().copied());
+            self.advance();
+        }
+        !self._last_str_value.is_empty()
     }
 
-    fn eat_unicode_property_value(&self) -> bool {
-        unimplemented!()
+    fn eat_unicode_property_value(&mut self) -> bool {
+        self._last_str_value = Default::default();
+        while let Some(current_code_point) = self
+            .current_code_point()
+            .filter(|&current_code_point| is_unicode_property_value_character(current_code_point))
+        {
+            self._last_str_value
+                .extend(Wtf16::from(current_code_point).iter().copied());
+            self.advance();
+        }
+        !self._last_str_value.is_empty()
+
     }
 
-    fn eat_lone_unicode_property_name_or_value(&self) -> bool {
-        unimplemented!()
+    fn eat_lone_unicode_property_name_or_value(&mut self) -> bool {
+        self.eat_unicode_property_value()
     }
 
     fn eat_hex_escape_sequence(&mut self) -> Result<bool, RegExpSyntaxError> {

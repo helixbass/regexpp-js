@@ -81,6 +81,11 @@ pub const ZERO_WIDTH_JOINER: CodePoint = 0x200d;
 pub const LINE_SEPARATOR: CodePoint = 0x2028;
 pub const PARAGRAPH_SEPARATOR: CodePoint = 0x2029;
 
+pub fn is_latin_letter(code: CodePoint) -> bool {
+    code >= LATIN_CAPITAL_LETTER_A && code <= LATIN_CAPITAL_LETTER_Z ||
+    code >= LATIN_SMALL_LETTER_A && code <= LATIN_SMALL_LETTER_Z
+}
+
 pub fn is_decimal_digit(code: CodePoint) -> bool {
     code >= DIGIT_ZERO && code <= DIGIT_NINE
 }
