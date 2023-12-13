@@ -1,8 +1,27 @@
 use id_arena::Id;
 
-use crate::ast::Node;
+use crate::{ast::Node, AllArenas};
 
-pub struct RegExpVisitor {}
+pub struct RegExpVisitor<'a, THandlers: Handlers> {
+    _arena: &'a AllArenas,
+    _handlers: &'a THandlers,
+}
+
+impl<'a, THandlers: Handlers> RegExpVisitor<'a, THandlers> {
+    pub fn new(
+        arena: &'a AllArenas,
+        handlers: &'a THandlers,
+    ) -> Self {
+        Self {
+            _arena: arena,
+            _handlers: handlers,
+        }
+    }
+
+    pub fn visit(&self, node: Id<Node>) {
+        unimplemented!()
+    }
+}
 
 pub trait Handlers {
     fn on_alternative_enter(&self, node: Id<Node/*Alternative*/>) {}
