@@ -10,7 +10,7 @@ mod regexp_syntax_error;
 mod test;
 mod unicode;
 mod validator;
-mod visitor;
+pub mod visitor;
 mod wtf16;
 
 pub use arena::AllArenas;
@@ -20,8 +20,8 @@ use id_arena::Id;
 pub use parser::RegExpParser;
 pub use reader::{CodePoint, Reader};
 pub use regexp_syntax_error::RegExpSyntaxError;
-pub use validator::RegExpValidator;
-pub use visitor::RegExpVisitor;
+pub use validator::{RegExpValidator, ValidatePatternFlags};
+use visitor::RegExpVisitor;
 pub use wtf16::Wtf16;
 
 pub extern crate id_arena;
