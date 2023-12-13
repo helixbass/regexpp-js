@@ -1,6 +1,6 @@
 use std::{collections::HashMap, rc::Rc};
 
-use debug_cell::{RefCell, Ref};
+use debug_cell::{Ref, RefCell};
 use id_arena::Id;
 use serde::Deserialize;
 use squalid::EverythingExt;
@@ -10,9 +10,10 @@ use crate::{
     ast::{Node, NodeInterface},
     ecma_versions::{EcmaVersion, LATEST_ECMA_VERSION},
     unicode::HYPHEN_MINUS,
-    validator::{self, AssertionKind, CapturingGroupKey, CharacterKind, RegExpFlags, ValidatePatternFlags},
-    CodePoint, RegExpValidator, Result,
-    Wtf16,
+    validator::{
+        self, AssertionKind, CapturingGroupKey, CharacterKind, RegExpFlags, ValidatePatternFlags,
+    },
+    CodePoint, RegExpValidator, Result, Wtf16,
 };
 
 #[derive(Copy, Clone, Default, Deserialize)]
@@ -240,7 +241,11 @@ impl<'a> validator::Options for RegExpParserState<'a> {
             Default::default(),
         )));
         let _node = self._node.borrow().unwrap();
-        self._arena.node_mut(parent).as_alternative_mut().elements.push(_node);
+        self._arena
+            .node_mut(parent)
+            .as_alternative_mut()
+            .elements
+            .push(_node);
         self._capturing_groups.borrow_mut().push(_node);
     }
 
@@ -851,11 +856,8 @@ impl<'a> RegExpParser<'a> {
         let start = start.unwrap_or(0);
         let end = end.unwrap_or_else(|| source.len());
         *self._state.source.borrow_mut() = source.into();
-        self._validator.validate_literal(
-            source,
-            Some(start),
-            Some(end),
-        )?;
+        self._validator
+            .validate_literal(source, Some(start), Some(end))?;
         let pattern = self._state.pattern();
         let flags = self._state.flags();
         let literal = self._arena.alloc_node(Node::new_reg_exp_literal(
@@ -881,12 +883,8 @@ impl<'a> RegExpParser<'a> {
         let start = start.unwrap_or(0);
         let end = end.unwrap_or_else(|| source.len());
         *self._state.source.borrow_mut() = source.into();
-        self._validator.validate_pattern(
-            source,
-            Some(start),
-            Some(end),
-            flags,
-        )?;
+        self._validator
+            .validate_pattern(source, Some(start), Some(end), flags)?;
         Ok(self._state.pattern())
     }
 }
@@ -901,7 +899,11 @@ mod tests {
     fn test_parse_pattern_function() {
         let arena = AllArenas::default();
         assert_that!(
-            &RegExpParser::new(&arena, None).parse_pattern(&Wtf16::from(r#"\"#), None, None, None).unwrap_err().message
-        ).contains(r#"\ at end of pattern"#);
+            &RegExpParser::new(&arena, None)
+                .parse_pattern(&Wtf16::from(r#"\"#), None, None, None)
+                .unwrap_err()
+                .message
+        )
+        .contains(r#"\ at end of pattern"#);
     }
 }
