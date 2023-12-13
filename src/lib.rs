@@ -224,10 +224,10 @@ mod tests {
     #[test]
     fn test_visit_reg_exp_ast() {
         fn generate_ast(source: &[u16], options: parser::Options, arena: &AllArenas) -> Id<Node> {
-            parse_reg_exp_literal(&source, Some(options), &arena).unwrap()
+            parse_reg_exp_literal(source, Some(options), arena).unwrap()
         }
 
-        for (filename, fixture) in &*fixtures::visitor::FIXTURES_DATA {
+        for (_filename, fixture) in &*fixtures::visitor::FIXTURES_DATA {
             let options = fixture.options;
             for (source, expected) in &fixture.patterns {
                 let source: Wtf16 = (&**source).into();
@@ -275,7 +275,7 @@ mod tests {
                     fn push_event(&self, node: Id<Node>, event_type: &str) {
                         let mut event: Wtf16 = (&*format!("{event_type}:")).into();
                         let node_ref = self.arena.node(node);
-                        event.extend(Wtf16::from(&*format!(":{}", get_node_type(&node_ref))).iter().copied());
+                        event.extend(Wtf16::from(&*format!("{}:", get_node_type(&node_ref))).iter().copied());
                         event.extend(node_ref.raw().into_iter().copied());
                         self.history.borrow_mut().push(event);
                     }
