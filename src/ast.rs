@@ -460,6 +460,13 @@ impl Node {
         }
     }
 
+    pub fn as_alternative(&self) -> &Alternative {
+        match self {
+            Self::Alternative(value) => value,
+            _ => unreachable!(),
+        }
+    }
+
     pub fn as_alternative_mut(&mut self) -> &mut Alternative {
         match self {
             Self::Alternative(value) => value,
@@ -484,6 +491,83 @@ impl Node {
     pub fn as_class_string_disjunction_mut(&mut self) -> &mut ClassStringDisjunction {
         match self {
             Self::ClassStringDisjunction(value) => value,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn as_assertion(&self) -> &Assertion {
+        match self {
+            Self::Assertion(value) => value,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn as_character_class_range(&self) -> &CharacterClassRange {
+        match self {
+            Self::CharacterClassRange(value) => value,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn as_class_intersection(&self) -> &ClassIntersection {
+        match self {
+            Self::ClassIntersection(value) => value,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn as_class_string_disjunction(&self) -> &ClassStringDisjunction {
+        match self {
+            Self::ClassStringDisjunction(value) => value,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn as_class_subtraction(&self) -> &ClassSubtraction {
+        match self {
+            Self::ClassSubtraction(value) => value,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn as_expression_character_class(&self) -> &ExpressionCharacterClass {
+        match self {
+            Self::ExpressionCharacterClass(value) => value,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn as_group(&self) -> &Group {
+        match self {
+            Self::Group(value) => value,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn as_pattern(&self) -> &Pattern {
+        match self {
+            Self::Pattern(value) => value,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn as_quantifier(&self) -> &Quantifier {
+        match self {
+            Self::Quantifier(value) => value,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn as_reg_exp_literal(&self) -> &RegExpLiteral {
+        match self {
+            Self::RegExpLiteral(value) => value,
+            _ => unreachable!(),
+        }
+    }
+
+    pub fn as_string_alternative(&self) -> &StringAlternative {
+        match self {
+            Self::StringAlternative(value) => value,
             _ => unreachable!(),
         }
     }
