@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use id_arena::Id;
 #[cfg(test)]
 use pathdiff::diff_paths;
+#[cfg(test)]
 use serde::{Deserialize, Deserializer};
 
 #[cfg(test)]
@@ -575,6 +576,7 @@ impl Node {
     }
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type")]
 pub enum NodeUnresolved {
@@ -1255,6 +1257,7 @@ pub struct RegExpLiteral {
     pub flags: Id<Node>,   /*Flags*/
 }
 
+#[cfg(test)]
 fn deserialize_possibly_infinity_u32<'de, D>(deserializer: D) -> Result<u32, D::Error>
 where
     D: Deserializer<'de>,
@@ -1276,6 +1279,7 @@ where
     })
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct RegExpLiteralUnresolved {
     pub parent: Option<String>,
@@ -1292,6 +1296,7 @@ pub struct Pattern {
     pub alternatives: Vec<Id<Node> /*Alternative*/>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct PatternUnresolved {
     pub parent: Option<String>,
@@ -1307,6 +1312,7 @@ pub struct Alternative {
     pub elements: Vec<Id<Node> /*Element*/>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct AlternativeUnresolved {
     pub parent: Option<String>,
@@ -1322,6 +1328,7 @@ pub struct Group {
     pub alternatives: Vec<Id<Node> /*Alternative*/>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct GroupUnresolved {
     pub parent: Option<String>,
@@ -1339,6 +1346,7 @@ pub struct CapturingGroup {
     pub references: Vec<Id<Node> /*Backreference*/>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct CapturingGroupUnresolved {
     pub parent: Option<String>,
@@ -1358,6 +1366,7 @@ pub struct Assertion {
     pub alternatives: Option<Vec<Id<Node> /*Alternative*/>>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct AssertionUnresolved {
     pub parent: Option<String>,
@@ -1378,6 +1387,7 @@ pub struct Quantifier {
     pub element: Id<Node /*QuantifiableElement*/>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct QuantifierUnresolved {
     pub parent: Option<String>,
@@ -1399,6 +1409,7 @@ pub struct CharacterClass {
     pub elements: Vec<Id<Node> /*CharacterClassElement*/>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct CharacterClassUnresolved {
@@ -1418,6 +1429,7 @@ pub struct CharacterClassRange {
     pub max: Id<Node /*Character*/>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct CharacterClassRangeUnresolved {
     pub parent: Option<String>,
@@ -1438,6 +1450,7 @@ pub struct CharacterSet {
     pub negate: Option<bool>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct CharacterSetUnresolved {
     pub parent: Option<String>,
@@ -1458,6 +1471,7 @@ pub struct ExpressionCharacterClass {
     pub expression: Id<Node /*ClassIntersection | ClassSubtraction*/>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct ExpressionCharacterClassUnresolved {
     pub parent: Option<String>,
@@ -1475,6 +1489,7 @@ pub struct ClassIntersection {
     pub right: Id<Node /*ClassSetOperand*/>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct ClassIntersectionUnresolved {
     pub parent: Option<String>,
@@ -1492,6 +1507,7 @@ pub struct ClassSubtraction {
     pub right: Id<Node /*ClassSetOperand*/>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct ClassSubtractionUnresolved {
     pub parent: Option<String>,
@@ -1508,6 +1524,7 @@ pub struct ClassStringDisjunction {
     pub alternatives: Vec<Id<Node> /*StringAlternative*/>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct ClassStringDisjunctionUnresolved {
     pub parent: Option<String>,
@@ -1523,6 +1540,7 @@ pub struct StringAlternative {
     pub elements: Vec<Id<Node> /*Character*/>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct StringAlternativeUnresolved {
     pub parent: Option<String>,
@@ -1538,6 +1556,7 @@ pub struct Character {
     pub value: CodePoint,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct CharacterUnresolved {
     pub parent: Option<String>,
@@ -1554,6 +1573,7 @@ pub struct Backreference {
     pub resolved: Option<Id<Node /*CapturingGroup*/>>,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 pub struct BackreferenceUnresolved {
     pub parent: Option<String>,
@@ -1578,6 +1598,7 @@ pub struct Flags {
     pub unicode_sets: bool,
 }
 
+#[cfg(test)]
 #[derive(Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct FlagsUnresolved {
