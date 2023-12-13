@@ -185,24 +185,16 @@ impl<'a, THandlers: Handlers> RegExpVisitor<'a, THandlers> {
 
     fn visit_quantifier(&self, node: Id<Node>) {
         self._handlers.on_quantifier_enter(node);
-        self.visit(
-            self._arena
-                .node(node)
-                .as_quantifier()
-                .element,
-        );
+        self.visit(self._arena.node(node).as_quantifier().element);
         self._handlers.on_quantifier_leave(node);
     }
 
     fn visit_reg_exp_literal(&self, node: Id<Node>) {
         self._handlers.on_reg_exp_literal_enter(node);
-        self._arena
-            .node(node)
-            .as_reg_exp_literal()
-            .thrush(|node| {
-                self.visit_pattern(node.pattern);
-                self.visit_flags(node.flags);
-            });
+        self._arena.node(node).as_reg_exp_literal().thrush(|node| {
+            self.visit_pattern(node.pattern);
+            self.visit_flags(node.flags);
+        });
         self._handlers.on_reg_exp_literal_leave(node);
     }
 

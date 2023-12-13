@@ -36,17 +36,13 @@ pub fn parse_reg_exp_literal(
     RegExpParser::new(arena, options).parse_literal(source, None, None)
 }
 
-pub fn visit_reg_exp_ast(
-    node: Id<Node>,
-    handlers: &impl visitor::Handlers,
-    arena: &AllArenas,
-) {
+pub fn visit_reg_exp_ast(node: Id<Node>, handlers: &impl visitor::Handlers, arena: &AllArenas) {
     RegExpVisitor::new(arena, handlers).visit(node);
 }
 
 #[cfg(test)]
 mod tests {
-    use std::{collections::HashMap, rc::Rc, cell::RefCell};
+    use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
     use itertools::Itertools;
     use regex::Captures;
@@ -56,8 +52,11 @@ mod tests {
     use super::*;
 
     use crate::{
-        ast::{resolve_location, to_node_unresolved, NodeUnresolved, NodeInterface},
-        test::fixtures::{parser::literal::{AstOrError, self}, self},
+        ast::{resolve_location, to_node_unresolved, NodeInterface, NodeUnresolved},
+        test::fixtures::{
+            self,
+            parser::literal::{self, AstOrError},
+        },
         unicode::{
             is_line_terminator, ASTERISK, LEFT_SQUARE_BRACKET, REVERSE_SOLIDUS,
             RIGHT_SQUARE_BRACKET, SOLIDUS,
@@ -67,12 +66,16 @@ mod tests {
 
     #[test]
     fn test_parse_reg_exp_literal_fixtures() {
-        fn generate_ast(source: &[u16], options: parser::Options, arena: &AllArenas) -> NodeUnresolved {
-            let ast = parse_reg_exp_literal(&source, Some(options), &arena).unwrap();
+        fn generate_ast(
+            source: &[u16],
+            options: parser::Options,
+            arena: &AllArenas,
+        ) -> NodeUnresolved {
+            let ast = parse_reg_exp_literal(source, Some(options), arena).unwrap();
             let mut path: Vec<String> = Default::default();
             let mut path_map: HashMap<Id<Node>, String> = Default::default();
-            resolve_location(&arena, ast, &mut path, &mut path_map);
-            to_node_unresolved(ast, &arena, &path_map)
+            resolve_location(arena, ast, &mut path, &mut path_map);
+            to_node_unresolved(ast, arena, &path_map)
         }
 
         for (filename, fixture) in &*literal::FIXTURES_DATA {
@@ -133,15 +136,14 @@ mod tests {
                                     }),
                                 )
                                 .unwrap_err();
-                            let expected_message = regex!(r#"/([a-z]+?):"#).replace(
-                                &expected.message,
-                                |captures: &Captures| {
+                            let expected_message = regex!(r#"/([a-z]+?):"#)
+                                .replace(&expected.message, |captures: &Captures| {
                                     format!(
                                         "/{}:",
                                         regex!(r#"[^uv]"#).replace_all(&captures[1], "")
                                     )
-                                }
-                            ).into_owned();
+                                })
+                                .into_owned();
                             let expected_index = expected.index - 1;
                             assert_that!(&error.message).is_equal_to(&expected_message);
                             assert_that!(&error.index).is_equal_to(expected_index);
@@ -263,9 +265,7 @@ mod tests {
                 }
 
                 impl<'a> HistoryRecorder<'a> {
-                    pub fn new(
-                        arena: &'a AllArenas,
-                    ) -> Self {
+                    pub fn new(arena: &'a AllArenas) -> Self {
                         Self {
                             arena,
                             history: Default::default(),
@@ -275,7 +275,11 @@ mod tests {
                     fn push_event(&self, node: Id<Node>, event_type: &str) {
                         let mut event: Wtf16 = (&*format!("{event_type}:")).into();
                         let node_ref = self.arena.node(node);
-                        event.extend(Wtf16::from(&*format!("{}:", get_node_type(&node_ref))).iter().copied());
+                        event.extend(
+                            Wtf16::from(&*format!("{}:", get_node_type(&node_ref)))
+                                .iter()
+                                .copied(),
+                        );
                         event.extend(node_ref.raw().into_iter().copied());
                         self.history.borrow_mut().push(event);
                     }
@@ -290,157 +294,171 @@ mod tests {
                 }
 
                 impl<'a> visitor::Handlers for HistoryRecorder<'a> {
-                    fn on_alternative_enter(&self, node: Id<Node/*Alternative*/>) {
+                    fn on_alternative_enter(&self, node: Id<Node /*Alternative*/>) {
                         self.enter(node);
                     }
 
-                    fn on_alternative_leave(&self, node: Id<Node/*Alternative*/>) {
+                    fn on_alternative_leave(&self, node: Id<Node /*Alternative*/>) {
                         self.leave(node);
                     }
 
-                    fn on_assertion_enter(&self, node: Id<Node/*Assertion*/>) {
+                    fn on_assertion_enter(&self, node: Id<Node /*Assertion*/>) {
                         self.enter(node);
                     }
 
-                    fn on_assertion_leave(&self, node: Id<Node/*Assertion*/>) {
+                    fn on_assertion_leave(&self, node: Id<Node /*Assertion*/>) {
                         self.leave(node);
                     }
 
-                    fn on_backreference_enter(&self, node: Id<Node/*Backreference*/>) {
+                    fn on_backreference_enter(&self, node: Id<Node /*Backreference*/>) {
                         self.enter(node);
                     }
 
-                    fn on_backreference_leave(&self, node: Id<Node/*Backreference*/>) {
+                    fn on_backreference_leave(&self, node: Id<Node /*Backreference*/>) {
                         self.leave(node);
                     }
 
-                    fn on_capturing_group_enter(&self, node: Id<Node/*CapturingGroup*/>) {
+                    fn on_capturing_group_enter(&self, node: Id<Node /*CapturingGroup*/>) {
                         self.enter(node);
                     }
 
-                    fn on_capturing_group_leave(&self, node: Id<Node/*CapturingGroup*/>) {
+                    fn on_capturing_group_leave(&self, node: Id<Node /*CapturingGroup*/>) {
                         self.leave(node);
                     }
 
-                    fn on_character_enter(&self, node: Id<Node/*Character*/>) {
+                    fn on_character_enter(&self, node: Id<Node /*Character*/>) {
                         self.enter(node);
                     }
 
-                    fn on_character_leave(&self, node: Id<Node/*Character*/>) {
+                    fn on_character_leave(&self, node: Id<Node /*Character*/>) {
                         self.leave(node);
                     }
 
-                    fn on_character_class_enter(&self, node: Id<Node/*CharacterClass*/>) {
+                    fn on_character_class_enter(&self, node: Id<Node /*CharacterClass*/>) {
                         self.enter(node);
                     }
 
-                    fn on_character_class_leave(&self, node: Id<Node/*CharacterClass*/>) {
+                    fn on_character_class_leave(&self, node: Id<Node /*CharacterClass*/>) {
                         self.leave(node);
                     }
 
-                    fn on_character_class_range_enter(&self, node: Id<Node/*CharacterClassRange*/>) {
+                    fn on_character_class_range_enter(
+                        &self,
+                        node: Id<Node /*CharacterClassRange*/>,
+                    ) {
                         self.enter(node);
                     }
 
-                    fn on_character_class_range_leave(&self, node: Id<Node/*CharacterClassRange*/>) {
+                    fn on_character_class_range_leave(
+                        &self,
+                        node: Id<Node /*CharacterClassRange*/>,
+                    ) {
                         self.leave(node);
                     }
 
-                    fn on_character_set_enter(&self, node: Id<Node/*CharacterSet*/>) {
+                    fn on_character_set_enter(&self, node: Id<Node /*CharacterSet*/>) {
                         self.enter(node);
                     }
 
-                    fn on_character_set_leave(&self, node: Id<Node/*CharacterSet*/>) {
+                    fn on_character_set_leave(&self, node: Id<Node /*CharacterSet*/>) {
                         self.leave(node);
                     }
 
-                    fn on_class_intersection_enter(&self, node: Id<Node/*ClassIntersection*/>) {
+                    fn on_class_intersection_enter(&self, node: Id<Node /*ClassIntersection*/>) {
                         self.enter(node);
                     }
 
-                    fn on_class_intersection_leave(&self, node: Id<Node/*ClassIntersection*/>) {
+                    fn on_class_intersection_leave(&self, node: Id<Node /*ClassIntersection*/>) {
                         self.leave(node);
                     }
 
-                    fn on_class_string_disjunction_enter(&self, node: Id<Node/*ClassStringDisjunction*/>) {
+                    fn on_class_string_disjunction_enter(
+                        &self,
+                        node: Id<Node /*ClassStringDisjunction*/>,
+                    ) {
                         self.enter(node);
                     }
 
-                    fn on_class_string_disjunction_leave(&self, node: Id<Node/*ClassStringDisjunction*/>) {
+                    fn on_class_string_disjunction_leave(
+                        &self,
+                        node: Id<Node /*ClassStringDisjunction*/>,
+                    ) {
                         self.leave(node);
                     }
 
-                    fn on_class_subtraction_enter(&self, node: Id<Node/*ClassSubtraction*/>) {
+                    fn on_class_subtraction_enter(&self, node: Id<Node /*ClassSubtraction*/>) {
                         self.enter(node);
                     }
 
-                    fn on_class_subtraction_leave(&self, node: Id<Node/*ClassSubtraction*/>) {
+                    fn on_class_subtraction_leave(&self, node: Id<Node /*ClassSubtraction*/>) {
                         self.leave(node);
                     }
 
-                    fn on_expression_character_class_enter(&self, node: Id<Node/*ExpressionCharacterClass*/>) {
+                    fn on_expression_character_class_enter(
+                        &self,
+                        node: Id<Node /*ExpressionCharacterClass*/>,
+                    ) {
                         self.enter(node);
                     }
 
-                    fn on_expression_character_class_leave(&self, node: Id<Node/*ExpressionCharacterClass*/>) {
+                    fn on_expression_character_class_leave(
+                        &self,
+                        node: Id<Node /*ExpressionCharacterClass*/>,
+                    ) {
                         self.leave(node);
                     }
 
-                    fn on_flags_enter(&self, node: Id<Node/*Flags*/>) {
+                    fn on_flags_enter(&self, node: Id<Node /*Flags*/>) {
                         self.enter(node);
                     }
 
-                    fn on_flags_leave(&self, node: Id<Node/*Flags*/>) {
+                    fn on_flags_leave(&self, node: Id<Node /*Flags*/>) {
                         self.leave(node);
                     }
 
-                    fn on_group_enter(&self, node: Id<Node/*Group*/>) {
+                    fn on_group_enter(&self, node: Id<Node /*Group*/>) {
                         self.enter(node);
                     }
 
-                    fn on_group_leave(&self, node: Id<Node/*Group*/>) {
+                    fn on_group_leave(&self, node: Id<Node /*Group*/>) {
                         self.leave(node);
                     }
 
-                    fn on_pattern_enter(&self, node: Id<Node/*Pattern*/>) {
+                    fn on_pattern_enter(&self, node: Id<Node /*Pattern*/>) {
                         self.enter(node);
                     }
 
-                    fn on_pattern_leave(&self, node: Id<Node/*Pattern*/>) {
+                    fn on_pattern_leave(&self, node: Id<Node /*Pattern*/>) {
                         self.leave(node);
                     }
 
-                    fn on_quantifier_enter(&self, node: Id<Node/*Quantifier*/>) {
+                    fn on_quantifier_enter(&self, node: Id<Node /*Quantifier*/>) {
                         self.enter(node);
                     }
 
-                    fn on_quantifier_leave(&self, node: Id<Node/*Quantifier*/>) {
+                    fn on_quantifier_leave(&self, node: Id<Node /*Quantifier*/>) {
                         self.leave(node);
                     }
 
-                    fn on_reg_exp_literal_enter(&self, node: Id<Node/*RegExpLiteral*/>) {
+                    fn on_reg_exp_literal_enter(&self, node: Id<Node /*RegExpLiteral*/>) {
                         self.enter(node);
                     }
 
-                    fn on_reg_exp_literal_leave(&self, node: Id<Node/*RegExpLiteral*/>) {
+                    fn on_reg_exp_literal_leave(&self, node: Id<Node /*RegExpLiteral*/>) {
                         self.leave(node);
                     }
 
-                    fn on_string_alternative_enter(&self, node: Id<Node/*StringAlternative*/>) {
+                    fn on_string_alternative_enter(&self, node: Id<Node /*StringAlternative*/>) {
                         self.enter(node);
                     }
 
-                    fn on_string_alternative_leave(&self, node: Id<Node/*StringAlternative*/>) {
+                    fn on_string_alternative_leave(&self, node: Id<Node /*StringAlternative*/>) {
                         self.leave(node);
                     }
                 }
 
                 let history = HistoryRecorder::new(&arena);
-                visit_reg_exp_ast(
-                    ast,
-                    &history,
-                    &arena,
-                );
+                visit_reg_exp_ast(ast, &history, &arena);
 
                 assert_that!(&*history.history.borrow()).is_equal_to(expected);
             }

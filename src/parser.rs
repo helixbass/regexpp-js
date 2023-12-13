@@ -159,7 +159,7 @@ impl<'a> validator::Options for RegExpParserState<'a> {
         }
     }
 
-    fn on_alternative_enter(&self, start: usize, index: usize) {
+    fn on_alternative_enter(&self, start: usize, _index: usize) {
         let parent = self._node.borrow().unwrap();
         assert!(matches!(
             &*self._arena.node(parent),
@@ -183,7 +183,7 @@ impl<'a> validator::Options for RegExpParserState<'a> {
         }
     }
 
-    fn on_alternative_leave(&self, start: usize, end: usize, index: usize) {
+    fn on_alternative_leave(&self, start: usize, end: usize, _index: usize) {
         let node = self._node.borrow().unwrap();
         assert!(matches!(&*self._arena.node(node), Node::Alternative(_)));
 
@@ -263,7 +263,7 @@ impl<'a> validator::Options for RegExpParserState<'a> {
         *self._node.borrow_mut() = self._arena.node(node).maybe_parent();
     }
 
-    fn on_quantifier(&self, start: usize, end: usize, min: u32, max: u32, greedy: bool) {
+    fn on_quantifier(&self, _start: usize, end: usize, min: u32, max: u32, greedy: bool) {
         let parent = self._node.borrow().unwrap();
         assert!(matches!(&*self._arena.node(parent), Node::Alternative(_)));
 
@@ -854,7 +854,7 @@ impl<'a> RegExpParser<'a> {
         end: Option<usize>,
     ) -> Result<Id<Node>> {
         let start = start.unwrap_or(0);
-        let end = end.unwrap_or_else(|| source.len());
+        let end = end.unwrap_or(source.len());
         *self._state.source.borrow_mut() = source.into();
         self._validator
             .validate_literal(source, Some(start), Some(end))?;
@@ -881,7 +881,7 @@ impl<'a> RegExpParser<'a> {
         flags: Option<ValidatePatternFlags>,
     ) -> Result<Id<Node>> {
         let start = start.unwrap_or(0);
-        let end = end.unwrap_or_else(|| source.len());
+        let end = end.unwrap_or(source.len());
         *self._state.source.borrow_mut() = source.into();
         self._validator
             .validate_pattern(source, Some(start), Some(end), flags)?;

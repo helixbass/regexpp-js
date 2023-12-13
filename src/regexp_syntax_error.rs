@@ -21,7 +21,7 @@ pub fn new_reg_exp_syntax_error(
     src_ctx: &RegExpValidatorSourceContext,
     flags: Flags,
     index: usize,
-    message: &str
+    message: &str,
 ) -> RegExpSyntaxError {
     let mut source: Cow<'_, str> = "".into();
     match src_ctx.kind {
@@ -33,18 +33,14 @@ pub fn new_reg_exp_syntax_error(
         }
         RegExpValidatorSourceContextKind::Pattern => {
             let pattern = &src_ctx.source[src_ctx.start..src_ctx.end];
-            let flags_text = format!("{}{}", if flags.unicode {
-                "u"
-            } else {
-                ""
-            }, if flags.unicode_sets {
-                "v"
-            } else {
-                ""
-            });
+            let flags_text = format!(
+                "{}{}",
+                if flags.unicode { "u" } else { "" },
+                if flags.unicode_sets { "v" } else { "" }
+            );
             source = format!(": /{}/{flags_text}", String::from_utf16(pattern).unwrap()).into();
         }
-        _ => ()
+        _ => (),
     }
 
     RegExpSyntaxError {

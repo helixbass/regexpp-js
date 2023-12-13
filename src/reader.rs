@@ -1,4 +1,7 @@
-use crate::{Wtf16, wtf16::{is_surrogate_code_point, get_single_surrogate_pair_code_point}};
+use crate::{
+    wtf16::{get_single_surrogate_pair_code_point, is_surrogate_code_point},
+    Wtf16,
+};
 
 pub type CodePoint = u32;
 
@@ -40,7 +43,9 @@ impl Reader {
     fn at(&self, i: usize) -> Option<CodePoint> {
         (i < self._end).then(|| {
             let possibly_first_half_of_surrogate_pair = self._s[i];
-            if !self._use_unicode_impl || !is_surrogate_code_point(possibly_first_half_of_surrogate_pair) {
+            if !self._use_unicode_impl
+                || !is_surrogate_code_point(possibly_first_half_of_surrogate_pair)
+            {
                 return possibly_first_half_of_surrogate_pair.into();
             }
             get_single_surrogate_pair_code_point(&self._s[i..=i + 1])
@@ -128,7 +133,7 @@ impl Reader {
     }
 
     pub fn eat3(&mut self, cp1: CodePoint, cp2: CodePoint, cp3: CodePoint) -> bool {
-        if self._cp1 == Some(cp1) && self._cp2 == Some(cp2)  && self._cp3 == Some(cp3) {
+        if self._cp1 == Some(cp1) && self._cp2 == Some(cp2) && self._cp3 == Some(cp3) {
             self.advance();
             self.advance();
             self.advance();

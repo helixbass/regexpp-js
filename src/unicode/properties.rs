@@ -1,4 +1,4 @@
-use std::{collections::HashSet, cell::OnceCell};
+use std::{cell::OnceCell, collections::HashSet};
 
 use once_cell::sync::Lazy;
 
@@ -51,54 +51,48 @@ impl DataSet {
     }
 
     pub fn es2018(&self) -> &HashSet<&'static str> {
-        self._set2018.get_or_init(|| {
-            self._raw2018.split(' ').collect()
-        })
+        self._set2018
+            .get_or_init(|| self._raw2018.split(' ').collect())
     }
 
     pub fn es2019(&self) -> &HashSet<&'static str> {
-        self._set2019.get_or_init(|| {
-            self._raw2019.split(' ').collect()
-        })
+        self._set2019
+            .get_or_init(|| self._raw2019.split(' ').collect())
     }
 
     pub fn es2020(&self) -> &HashSet<&'static str> {
-        self._set2020.get_or_init(|| {
-            self._raw2020.split(' ').collect()
-        })
+        self._set2020
+            .get_or_init(|| self._raw2020.split(' ').collect())
     }
 
     pub fn es2021(&self) -> &HashSet<&'static str> {
-        self._set2021.get_or_init(|| {
-            self._raw2021.split(' ').collect()
-        })
+        self._set2021
+            .get_or_init(|| self._raw2021.split(' ').collect())
     }
 
     pub fn es2022(&self) -> &HashSet<&'static str> {
-        self._set2022.get_or_init(|| {
-            self._raw2022.split(' ').collect()
-        })
+        self._set2022
+            .get_or_init(|| self._raw2022.split(' ').collect())
     }
 
     pub fn es2023(&self) -> &HashSet<&'static str> {
-        self._set2023.get_or_init(|| {
-            self._raw2023.split(' ').collect()
-        })
+        self._set2023
+            .get_or_init(|| self._raw2023.split(' ').collect())
     }
 
     pub fn es2024(&self) -> &HashSet<&'static str> {
-        self._set2024.get_or_init(|| {
-            self._raw2024.split(' ').collect()
-        })
+        self._set2024
+            .get_or_init(|| self._raw2024.split(' ').collect())
     }
 }
 
-static GC_NAME_SET: Lazy<HashSet<&'static str>> = Lazy::new(|| {
-    ["General_Category", "gc"].into_iter().collect()
-});
+static GC_NAME_SET: Lazy<HashSet<&'static str>> =
+    Lazy::new(|| ["General_Category", "gc"].into_iter().collect());
 
 static SC_NAME_SET: Lazy<HashSet<&'static str>> = Lazy::new(|| {
-    ["Script", "Script_Extensions", "sc", "scx"].into_iter().collect()
+    ["Script", "Script_Extensions", "sc", "scx"]
+        .into_iter()
+        .collect()
 });
 
 thread_local! {
@@ -151,43 +145,33 @@ thread_local! {
     });
 }
 
-pub fn is_valid_unicode_property(
-    version: EcmaVersion,
-    name: &str,
-    value: &str,
-) -> bool {
+pub fn is_valid_unicode_property(version: EcmaVersion, name: &str, value: &str) -> bool {
     if GC_NAME_SET.contains(name) {
-        return version >= EcmaVersion::_2018 &&
-            GC_VALUE_SETS.with(|gc_value_sets| gc_value_sets.es2018().contains(value));
+        return version >= EcmaVersion::_2018
+            && GC_VALUE_SETS.with(|gc_value_sets| gc_value_sets.es2018().contains(value));
     }
     if SC_NAME_SET.contains(name) {
         return SC_VALUE_SETS.with(|sc_value_sets| {
-            version >= EcmaVersion::_2018 && sc_value_sets.es2018().contains(value) ||
-            version >= EcmaVersion::_2019 && sc_value_sets.es2019().contains(value) ||
-            version >= EcmaVersion::_2020 && sc_value_sets.es2020().contains(value) ||
-            version >= EcmaVersion::_2021 && sc_value_sets.es2021().contains(value) ||
-            version >= EcmaVersion::_2022 && sc_value_sets.es2022().contains(value) ||
-            version >= EcmaVersion::_2023 && sc_value_sets.es2023().contains(value)
+            version >= EcmaVersion::_2018 && sc_value_sets.es2018().contains(value)
+                || version >= EcmaVersion::_2019 && sc_value_sets.es2019().contains(value)
+                || version >= EcmaVersion::_2020 && sc_value_sets.es2020().contains(value)
+                || version >= EcmaVersion::_2021 && sc_value_sets.es2021().contains(value)
+                || version >= EcmaVersion::_2022 && sc_value_sets.es2022().contains(value)
+                || version >= EcmaVersion::_2023 && sc_value_sets.es2023().contains(value)
         });
     }
     false
 }
 
-pub fn is_valid_lone_unicode_property(
-    version: EcmaVersion,
-    value: &str,
-) -> bool {
+pub fn is_valid_lone_unicode_property(version: EcmaVersion, value: &str) -> bool {
     BIN_PROPERTY_SETS.with(|bin_property_sets| {
-        version >= EcmaVersion::_2018 && bin_property_sets.es2018().contains(value) ||
-        version >= EcmaVersion::_2019 && bin_property_sets.es2019().contains(value) ||
-        version >= EcmaVersion::_2021 && bin_property_sets.es2021().contains(value)
+        version >= EcmaVersion::_2018 && bin_property_sets.es2018().contains(value)
+            || version >= EcmaVersion::_2019 && bin_property_sets.es2019().contains(value)
+            || version >= EcmaVersion::_2021 && bin_property_sets.es2021().contains(value)
     })
 }
 
-pub fn is_valid_lone_unicode_property_of_string(
-    version: EcmaVersion,
-    value: &str,
-) -> bool {
+pub fn is_valid_lone_unicode_property_of_string(version: EcmaVersion, value: &str) -> bool {
     BIN_PROPERTY_OF_STRINGS_SETS.with(|bin_property_of_strings_sets| {
         version >= EcmaVersion::_2024 && bin_property_of_strings_sets.es2024().contains(value)
     })

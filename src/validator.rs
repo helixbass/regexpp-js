@@ -13,9 +13,9 @@ use crate::{
         combine_surrogate_pair, digit_to_int, is_decimal_digit, is_hex_digit, is_id_continue,
         is_id_start, is_latin_letter, is_lead_surrogate, is_line_terminator, is_octal_digit,
         is_trail_surrogate, is_valid_lone_unicode_property,
-        is_valid_lone_unicode_property_of_string, is_valid_unicode_property, AMPERSAND, ASTERISK,
-        BACKSPACE, CARRIAGE_RETURN, CHARACTER_TABULATION, CIRCUMFLEX_ACCENT, COLON, COMMA,
-        COMMERCIAL_AT, DIGIT_NINE, DIGIT_ONE, DIGIT_ZERO, DOLLAR_SIGN, EQUALS_SIGN,
+        is_valid_lone_unicode_property_of_string, is_valid_unicode, is_valid_unicode_property,
+        AMPERSAND, ASTERISK, BACKSPACE, CARRIAGE_RETURN, CHARACTER_TABULATION, CIRCUMFLEX_ACCENT,
+        COLON, COMMA, COMMERCIAL_AT, DIGIT_NINE, DIGIT_ONE, DIGIT_ZERO, DOLLAR_SIGN, EQUALS_SIGN,
         EXCLAMATION_MARK, FORM_FEED, FULL_STOP, GRAVE_ACCENT, GREATER_THAN_SIGN, HYPHEN_MINUS,
         LATIN_CAPITAL_LETTER_B, LATIN_CAPITAL_LETTER_D, LATIN_CAPITAL_LETTER_P,
         LATIN_CAPITAL_LETTER_S, LATIN_CAPITAL_LETTER_W, LATIN_SMALL_LETTER_B, LATIN_SMALL_LETTER_C,
@@ -27,7 +27,7 @@ use crate::{
         LESS_THAN_SIGN, LINE_FEED, LINE_TABULATION, LOW_LINE, NUMBER_SIGN, PERCENT_SIGN, PLUS_SIGN,
         QUESTION_MARK, REVERSE_SOLIDUS, RIGHT_CURLY_BRACKET, RIGHT_PARENTHESIS,
         RIGHT_SQUARE_BRACKET, SEMICOLON, SOLIDUS, TILDE, VERTICAL_LINE, ZERO_WIDTH_JOINER,
-        ZERO_WIDTH_NON_JOINER, is_valid_unicode,
+        ZERO_WIDTH_NON_JOINER,
     },
     EcmaVersion, Reader, RegExpSyntaxError, Wtf16,
 };
@@ -224,6 +224,7 @@ impl From<Wtf16> for CapturingGroupKey {
     }
 }
 
+#[allow(unused_variables)]
 pub trait Options {
     fn strict(&self) -> Option<bool>;
     fn ecma_version(&self) -> Option<EcmaVersion>;
@@ -262,6 +263,7 @@ pub trait Options {
     fn on_any_character_set(&self, start: usize, end: usize, kind: CharacterKind) {}
     fn on_escape_character_set(&self, start: usize, end: usize, kind: CharacterKind, negate: bool) {
     }
+    #[allow(clippy::too_many_arguments)]
     fn on_unicode_property_character_set(
         &self,
         start: usize,
@@ -652,6 +654,7 @@ impl<'a> RegExpValidator<'a> {
             .on_escape_character_set(start, end, kind, negate);
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn on_unicode_property_character_set(
         &mut self,
         start: usize,
@@ -1352,11 +1355,7 @@ impl<'a> RegExpValidator<'a> {
             if self.eat_group_name()? {
                 let group_name = &self._last_str_value;
                 self._backreference_names.insert(group_name.clone());
-                self.on_backreference(
-                    start - 1,
-                    self.index(),
-                    &group_name.clone().into(),
-                );
+                self.on_backreference(start - 1, self.index(), &group_name.clone().into());
                 return Ok(true);
             }
             self.raise("Invalid named reference", None)?;
@@ -1774,10 +1773,8 @@ impl<'a> RegExpValidator<'a> {
         {
             cp = self._last_int_value;
         } else if force_u_flag
-            && cp.matches(|cp| is_lead_surrogate(cp))
-            && self
-                .current_code_point()
-                .matches(|current_code_point| is_trail_surrogate(current_code_point))
+            && cp.matches(is_lead_surrogate)
+            && self.current_code_point().matches(is_trail_surrogate)
         {
             cp = Some(combine_surrogate_pair(
                 cp.unwrap(),
@@ -1786,7 +1783,7 @@ impl<'a> RegExpValidator<'a> {
             self.advance();
         }
 
-        if cp.matches(|cp| is_identifier_start_char(cp)) {
+        if cp.matches(is_identifier_start_char) {
             self._last_int_value = cp;
             return Ok(true);
         }
@@ -1979,7 +1976,7 @@ impl<'a> RegExpValidator<'a> {
     fn eat_decimal_escape(&mut self) -> bool {
         self._last_int_value = Some(0);
         let mut cp = self.current_code_point();
-        if cp.matches(|cp| cp >= DIGIT_ONE && cp <= DIGIT_NINE) {
+        if cp.matches(|cp| (DIGIT_ONE..=DIGIT_NINE).contains(&cp)) {
             while {
                 self._last_int_value =
                     Some(10 * self._last_int_value.unwrap() + (cp.unwrap() - DIGIT_ZERO));
@@ -1987,7 +1984,7 @@ impl<'a> RegExpValidator<'a> {
                 cp = self.current_code_point();
                 matches!(
                     cp,
-                    Some(cp) if cp >= DIGIT_ZERO && cp <= DIGIT_NINE
+                    Some(cp) if (DIGIT_ZERO..=DIGIT_NINE).contains(&cp)
                 )
             } {}
             return true;

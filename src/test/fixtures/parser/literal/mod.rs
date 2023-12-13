@@ -1,7 +1,6 @@
 #![cfg(test)]
 
 use std::{
-    collections::HashMap,
     fs,
     path::{Path, PathBuf},
 };
@@ -11,7 +10,7 @@ use itertools::{Either, Itertools};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 
-use crate::{ast::NodeUnresolved, RegExpSyntaxError, parser};
+use crate::{ast::NodeUnresolved, parser, RegExpSyntaxError};
 
 pub type FixtureData = IndexMap<PathBuf, FixtureDataValue>;
 

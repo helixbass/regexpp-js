@@ -28,6 +28,10 @@ impl<'de> Deserialize<'de> for Wtf16 {
         D: Deserializer<'de>,
     {
         let bytes = ByteBuf::deserialize(deserializer)?.into_vec();
+        #[allow(clippy::transmute_bytes_to_str)]
+        // SAFETY: it looks like Wtf8::from_str() (used by
+        // From<&str> for Wtf16 below) doesn't touch its argument
+        // so at that point should be valid Wtf8 instance
         let as_str: &str = unsafe { mem::transmute(&*bytes) };
         Ok(as_str.into())
     }

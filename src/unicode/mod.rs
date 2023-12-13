@@ -6,6 +6,7 @@ mod properties;
 pub use ids::*;
 pub use properties::*;
 
+#[allow(dead_code)]
 pub const NULL: CodePoint = 0x00;
 pub const BACKSPACE: CodePoint = 0x08;
 pub const CHARACTER_TABULATION: CodePoint = 0x09;
@@ -81,26 +82,27 @@ pub const ZERO_WIDTH_JOINER: CodePoint = 0x200d;
 pub const LINE_SEPARATOR: CodePoint = 0x2028;
 pub const PARAGRAPH_SEPARATOR: CodePoint = 0x2029;
 
+#[allow(dead_code)]
 pub const MIN_CODE_POINT: CodePoint = 0x00;
 pub const MAX_CODE_POINT: CodePoint = 0x10ffff;
 
 pub fn is_latin_letter(code: CodePoint) -> bool {
-    code >= LATIN_CAPITAL_LETTER_A && code <= LATIN_CAPITAL_LETTER_Z
-        || code >= LATIN_SMALL_LETTER_A && code <= LATIN_SMALL_LETTER_Z
+    (LATIN_CAPITAL_LETTER_A..=LATIN_CAPITAL_LETTER_Z).contains(&code)
+        || (LATIN_SMALL_LETTER_A..=LATIN_SMALL_LETTER_Z).contains(&code)
 }
 
 pub fn is_decimal_digit(code: CodePoint) -> bool {
-    code >= DIGIT_ZERO && code <= DIGIT_NINE
+    (DIGIT_ZERO..=DIGIT_NINE).contains(&code)
 }
 
 pub fn is_octal_digit(code: CodePoint) -> bool {
-    code >= DIGIT_ZERO && code <= DIGIT_SEVEN
+    (DIGIT_ZERO..=DIGIT_SEVEN).contains(&code)
 }
 
 pub fn is_hex_digit(code: CodePoint) -> bool {
-    code >= DIGIT_ZERO && code <= DIGIT_NINE
-        || code >= LATIN_CAPITAL_LETTER_A && code <= LATIN_CAPITAL_LETTER_F
-        || code >= LATIN_SMALL_LETTER_A && code <= LATIN_SMALL_LETTER_F
+    (DIGIT_ZERO..=DIGIT_NINE).contains(&code)
+        || (LATIN_CAPITAL_LETTER_A..=LATIN_CAPITAL_LETTER_F).contains(&code)
+        || (LATIN_SMALL_LETTER_A..=LATIN_SMALL_LETTER_F).contains(&code)
 }
 
 pub fn is_line_terminator(code: CodePoint) -> bool {
@@ -111,25 +113,26 @@ pub fn is_line_terminator(code: CodePoint) -> bool {
 }
 
 pub fn is_valid_unicode(code: CodePoint) -> bool {
-    /*code >= MIN_CODE_POINT &&*/ code <= MAX_CODE_POINT
+    /*code >= MIN_CODE_POINT &&*/
+    code <= MAX_CODE_POINT
 }
 
 pub fn digit_to_int(code: CodePoint) -> CodePoint {
-    if code >= LATIN_SMALL_LETTER_A && code <= LATIN_SMALL_LETTER_F {
+    if (LATIN_SMALL_LETTER_A..=LATIN_SMALL_LETTER_F).contains(&code) {
         return code - LATIN_SMALL_LETTER_A + 10;
     }
-    if code >= LATIN_CAPITAL_LETTER_A && code <= LATIN_CAPITAL_LETTER_F {
+    if (LATIN_CAPITAL_LETTER_A..=LATIN_CAPITAL_LETTER_F).contains(&code) {
         return code - LATIN_CAPITAL_LETTER_A + 10;
     }
     code - DIGIT_ZERO
 }
 
 pub fn is_lead_surrogate(code: CodePoint) -> bool {
-    code >= 0xd800 && code <= 0xdbff
+    (0xd800..=0xdbff).contains(&code)
 }
 
 pub fn is_trail_surrogate(code: CodePoint) -> bool {
-    code >= 0xdc00 && code <= 0xdfff
+    (0xdc00..=0xdfff).contains(&code)
 }
 
 pub fn combine_surrogate_pair(lead: CodePoint, trail: CodePoint) -> CodePoint {

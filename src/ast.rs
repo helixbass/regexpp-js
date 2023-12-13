@@ -1,13 +1,15 @@
-use std::{collections::HashMap, mem, ops};
+#[cfg(test)]
+use std::collections::HashMap;
 
 use id_arena::Id;
+#[cfg(test)]
 use pathdiff::diff_paths;
 use serde::{Deserialize, Deserializer};
-use serde_bytes::ByteBuf;
-use wtf8::Wtf8;
+
+#[cfg(test)]
+use crate::AllArenas;
 
 use crate::{
-    arena::AllArenas,
     validator::{AssertionKind, CapturingGroupKey, CharacterKind},
     CodePoint, Wtf16,
 };
@@ -817,6 +819,7 @@ impl NodeInterface for Node {
     }
 }
 
+#[cfg(test)]
 fn resolve_location_vec(
     arena: &AllArenas,
     nodes: &[Id<Node>],
@@ -833,6 +836,7 @@ fn resolve_location_vec(
     path.pop();
 }
 
+#[cfg(test)]
 pub fn resolve_location(
     arena: &AllArenas,
     node: Id<Node>,
@@ -965,11 +969,8 @@ impl NodeInterface for NodeBase {
     }
 }
 
-fn get_relative_path(
-    from: Id<Node>,
-    to: Id<Node>,
-    path_map: &HashMap<Id<Node>, String>,
-) -> String {
+#[cfg(test)]
+fn get_relative_path(from: Id<Node>, to: Id<Node>, path_map: &HashMap<Id<Node>, String>) -> String {
     let from_path = &path_map[&from];
     let to_path = &path_map[&to];
     let relative = diff_paths(to_path, from_path).unwrap();
@@ -977,6 +978,7 @@ fn get_relative_path(
     format!("♻️{}", relative.strip_suffix('/').unwrap_or(relative),)
 }
 
+#[cfg(test)]
 pub fn to_node_unresolved(
     id: Id<Node>,
     arena: &AllArenas,
@@ -1194,7 +1196,11 @@ pub fn to_node_unresolved(
                 end: node._base.end,
                 raw: node._base.raw.to_owned(),
                 ref_: node.ref_.clone(),
-                resolved: get_relative_path(node._base._arena_id.unwrap(), node.resolved.unwrap(), path_map),
+                resolved: get_relative_path(
+                    node._base._arena_id.unwrap(),
+                    node.resolved.unwrap(),
+                    path_map,
+                ),
             }))
         }
         Node::Character(node) => NodeUnresolved::Character(Box::new(CharacterUnresolved {

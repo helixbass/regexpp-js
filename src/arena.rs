@@ -1,4 +1,4 @@
-use debug_cell::{RefCell, Ref, RefMut};
+use debug_cell::{Ref, RefCell, RefMut};
 
 use id_arena::{Arena, Id};
 

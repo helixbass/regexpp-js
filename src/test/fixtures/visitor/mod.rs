@@ -1,11 +1,10 @@
-use std::{path::PathBuf, fs};
+use std::{fs, path::PathBuf};
 
 use indexmap::IndexMap;
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 
 use crate::{parser, wtf16::Wtf16};
-
 
 pub type FixtureData = IndexMap<PathBuf, FixtureDataValue>;
 
@@ -23,8 +22,7 @@ pub static FIXTURES_DATA: Lazy<FixtureData> = Lazy::new(|| {
         .unwrap()
         .map(Result::unwrap)
         .filter_map(|dirent| {
-            (dirent.path().extension().is_some()
-                && dirent.path().extension().unwrap() == "json")
+            (dirent.path().extension().is_some() && dirent.path().extension().unwrap() == "json")
                 .then(|| dirent.path())
         })
         .map(|filename| {

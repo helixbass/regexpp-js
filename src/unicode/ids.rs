@@ -90,8 +90,10 @@ fn is_in_range(cp: CodePoint, ranges: &[CodePoint]) -> bool {
 
 fn restore_ranges(data: &str) -> Vec<CodePoint> {
     let mut last = 0;
-    data.split(' ').map(|s| {
-        last += CodePoint::from_str_radix(s, 36).unwrap();
-        last
-    }).collect()
+    data.split(' ')
+        .map(|s| {
+            last += CodePoint::from_str_radix(s, 36).unwrap();
+            last
+        })
+        .collect()
 }
