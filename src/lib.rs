@@ -9,13 +9,13 @@ mod regexp_syntax_error;
 #[cfg(test)]
 mod test;
 mod unicode;
-mod validator;
+pub mod validator;
 pub mod visitor;
 mod wtf16;
 
 pub use arena::AllArenas;
 pub use ast::Node;
-pub(crate) use ecma_versions::EcmaVersion;
+pub use ecma_versions::EcmaVersion;
 use id_arena::Id;
 pub use parser::RegExpParser;
 pub use reader::{CodePoint, Reader};

@@ -5,7 +5,7 @@ use serde_bytes::ByteBuf;
 use wtf8::Wtf8;
 
 use crate::{
-    unicode::{is_lead_surrogate, is_trail_surrogate},
+    unicode::{is_lead_surrogate, is_trail_surrogate, combine_surrogate_pair},
     CodePoint,
 };
 
@@ -19,6 +19,26 @@ impl Wtf16 {
 
     pub fn split_code_points(&self) -> SplitCodePoints {
         SplitCodePoints::new(self)
+    }
+
+    pub fn code_point_at(&self, index: usize) -> Option<CodePoint> {
+        if index >= self.len() {
+            return None;
+        }
+
+        let first_unit: CodePoint = self.0[index].into();
+        if is_lead_surrogate(first_unit) {
+            if let Some(second_unit) = self
+                .0
+                .get(index + 1)
+                .copied()
+                .map(Into::into)
+                .filter(|&second_unit| is_trail_surrogate(second_unit))
+            {
+                return Some(combine_surrogate_pair(first_unit, second_unit));
+            }
+        }
+        Some(first_unit)
     }
 }
 
