@@ -14,7 +14,7 @@ pub mod visitor;
 mod wtf16;
 
 pub use arena::AllArenas;
-pub use ast::Node;
+pub use ast::{Node, NodeInterface};
 pub use ecma_versions::EcmaVersion;
 use id_arena::Id;
 pub use parser::RegExpParser;
@@ -52,7 +52,7 @@ mod tests {
     use super::*;
 
     use crate::{
-        ast::{resolve_location, to_node_unresolved, NodeInterface, NodeUnresolved},
+        ast::{resolve_location, to_node_unresolved, NodeUnresolved},
         test::fixtures::{
             self,
             parser::literal::{self, AstOrError},
