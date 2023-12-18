@@ -6,3 +6,19 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+debug-cell = { git = "https://github.com/helixbass/debug-cell", rev = "d94711a" }
+derive_builder = "0.12.0"
+id-arena = "2.2.1"
+indexmap = { version = "2.1.0", features = ["serde"] }
+itertools = "0.12.0"
+once_cell = "1.19.0"
+pathdiff = "0.2.1"
+regex = "1.10.2"
+serde = { version = "1.0.193", features = ["derive"] }
+serde_bytes = "0.11.12"
+squalid = { git = "https://github.com/helixbass/squalid", rev = "ca9515c" }
+wtf8 = "0.1.0"
+
+[dev-dependencies]
+serde_json = { git = "https://github.com/helixbass/json", rev = "eb2cf6b" }
+speculoos = "0.11.0"
