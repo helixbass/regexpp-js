@@ -1,5 +1,7 @@
 #![allow(clippy::into_iter_on_ref)]
 
+/// Derived from [regexpp](https://github.com/eslint-community/regexpp)
+
 mod arena;
 mod ast;
 mod ecma_versions;
