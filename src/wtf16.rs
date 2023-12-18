@@ -5,7 +5,7 @@ use serde_bytes::ByteBuf;
 use wtf8::Wtf8;
 
 use crate::{
-    unicode::{is_lead_surrogate, is_trail_surrogate, combine_surrogate_pair},
+    unicode::{combine_surrogate_pair, is_lead_surrogate, is_trail_surrogate},
     CodePoint,
 };
 
