@@ -976,8 +976,8 @@ fn get_relative_path(from: Id<Node>, to: Id<Node>, path_map: &HashMap<Id<Node>, 
     let from_path = &path_map[&from];
     let to_path = &path_map[&to];
     let relative = diff_paths(to_path, from_path).unwrap();
-    let relative = relative.to_str().unwrap();
-    format!("♻️{}", relative.strip_suffix('/').unwrap_or(relative),)
+    let relative = relative.to_str().unwrap().replace('\\', "/");
+    format!("♻️{}", relative.strip_suffix('/').unwrap_or(&relative),)
 }
 
 #[cfg(test)]
