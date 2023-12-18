@@ -42,7 +42,7 @@ impl<'a, THandlers: Handlers> RegExpVisitor<'a, THandlers> {
     fn visit_alternative(&self, node: Id<Node>) {
         self._handlers.on_alternative_enter(node);
         // TODO: should probably not hold a RefCell borrow while
-        // invoking the handlers in case someonw wants to mutably
+        // invoking the handlers in case someone wants to mutably
         // borrow from the arena in them?
         self._arena
             .node(node)
