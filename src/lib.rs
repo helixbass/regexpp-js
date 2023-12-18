@@ -101,18 +101,6 @@ mod tests {
                     AstOrError::Error(expected) => {
                         let err =
                             parse_reg_exp_literal(&source, Some(options), &arena).unwrap_err();
-                        // let ret =
-                        //     parse_reg_exp_literal(&source, Some(options), &arena);
-                        // let err = match ret {
-                        //     Err(err) => err,
-                        //     Ok(ast) => {
-                        //         let mut path: Vec<String> = Default::default();
-                        //         let mut path_map: HashMap<Id<Node>, String> = Default::default();
-                        //         resolve_location(&arena, ast, &mut path, &mut path_map);
-                        //         let ast = to_node_unresolved(ast, &arena, &path_map);
-                        //         panic!("ast: {ast:#?}");
-                        //     }
-                        // };
                         assert_that!(&err).is_equal_to(expected);
 
                         assert_that!(&&expected.message[..27])
