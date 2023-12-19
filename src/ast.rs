@@ -574,6 +574,13 @@ impl Node {
             _ => unreachable!(),
         }
     }
+
+    pub fn as_character(&self) -> &Character {
+        match self {
+            Self::Character(value) => value,
+            _ => unreachable!(),
+        }
+    }
 }
 
 #[cfg(test)]

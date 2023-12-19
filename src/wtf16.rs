@@ -110,6 +110,22 @@ impl TryFrom<&Wtf16> for String {
     }
 }
 
+impl TryFrom<&Wtf16> for char {
+    type Error = String;
+
+    fn try_from(value: &Wtf16) -> Result<Self, Self::Error> {
+        let string = String::try_from(value).map_err(|err| format!("{err}"))?;
+        let mut chars = string.chars();
+        let Some(first_char) = chars.next() else {
+            return Err("Expected a non-empty string".into());
+        };
+        if chars.next().is_some() {
+            return Err("Expected only a single character".into());
+        }
+        Ok(first_char)
+    }
+}
+
 pub struct SplitCodePoints<'a> {
     original: &'a Wtf16,
     next_index: usize,
